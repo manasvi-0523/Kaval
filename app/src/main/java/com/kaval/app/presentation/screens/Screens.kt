@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
@@ -412,8 +412,17 @@ fun FakeCallScreen(onBack: () -> Unit) {
     var delayLabel by remember { mutableStateOf("Immediate") }
     var incoming by remember { mutableStateOf(false) }
     var answered by remember { mutableStateOf(false) }
+    var scheduledDelaySeconds by remember { mutableIntStateOf(0) }
     val callers = listOf("Mom", "Brother", "Friend", "Emergency Contact")
     val delays = listOf("Immediate", "10 sec", "30 sec", "1 min")
+
+    LaunchedEffect(scheduledDelaySeconds) {
+        if (scheduledDelaySeconds > 0) {
+            delay(scheduledDelaySeconds * 1_000L)
+            scheduledDelaySeconds = 0
+            incoming = true
+        }
+    }
 
     Scaffold(topBar = { KavalTopBar("Fake Call", onBack) }) { padding ->
         if (incoming) {
@@ -448,10 +457,26 @@ fun FakeCallScreen(onBack: () -> Unit) {
                 item { ChoiceGroup("Delay", delays, delayLabel) { delayLabel = it } }
                 item {
                     KavalPrimaryButton(
-                        text = "Start Fake Call",
-                        onClick = { incoming = true },
+                        text = if (scheduledDelaySeconds > 0) "Fake Call Scheduled" else "Start Fake Call",
+                        onClick = {
+                            scheduledDelaySeconds = when (delayLabel) {
+                                "10 sec" -> 10
+                                "30 sec" -> 30
+                                "1 min" -> 60
+                                else -> 0
+                            }
+                            if (scheduledDelaySeconds == 0) incoming = true
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+                if (scheduledDelaySeconds > 0) {
+                    item {
+                        KavalGlassCard {
+                            Text("Incoming fake call will appear in $scheduledDelaySeconds seconds.")
+                            KavalSecondaryButton("Cancel Scheduled Call", { scheduledDelaySeconds = 0 }, Modifier.fillMaxWidth())
+                        }
+                    }
                 }
             }
         }
@@ -517,7 +542,7 @@ private fun KavalTopBar(title: String, onBack: () -> Unit) {
         title = { Text(title) },
         navigationIcon = {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
         }
     )
