@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,8 +44,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -59,6 +62,7 @@ import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.TrustedContact
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 
 @Composable
 fun KavalGlassCard(
@@ -122,7 +126,8 @@ fun KavalSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier =
 
 @Composable
 fun KavalSOSButton(onActivate: () -> Unit, modifier: Modifier = Modifier) {
-    val isPressed = androidx.compose.runtime.remember { mutableStateOf(false) }
+    val isPressed = remember { mutableStateOf(false) }
+    val hasActivated = remember { mutableStateOf(false) }
     val transition = rememberInfiniteTransition(label = "sos-pulse")
     val pulse by transition.animateFloat(
         initialValue = 1f,
@@ -130,6 +135,20 @@ fun KavalSOSButton(onActivate: () -> Unit, modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
         label = "pulse"
     )
+
+    LaunchedEffect(isPressed.value) {
+        if (isPressed.value) {
+            delay(2_000)
+            if (isPressed.value && !hasActivated.value) {
+                hasActivated.value = true
+                isPressed.value = false
+                onActivate()
+            }
+        } else {
+            hasActivated.value = false
+        }
+    }
+
     Box(modifier = modifier.size(224.dp), contentAlignment = Alignment.Center) {
         Box(
             Modifier
@@ -145,18 +164,10 @@ fun KavalSOSButton(onActivate: () -> Unit, modifier: Modifier = Modifier) {
                 .border(8.dp, Color.White.copy(alpha = 0.10f), CircleShape)
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
+                        awaitFirstDown(requireUnconsumed = false)
                         isPressed.value = true
-                        var activated = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val stillPressed = event.changes.any { it.pressed }
-                            if (!stillPressed) break
-                            activated = event.changes.any { it.uptimeMillis - down.uptimeMillis >= 2_000 }
-                            if (activated) break
-                        }
-                        isPressed.value = false
-                        if (activated) onActivate()
+                        waitForUpOrCancellation()
+                        if (!hasActivated.value) isPressed.value = false
                     }
                 },
             contentAlignment = Alignment.Center
