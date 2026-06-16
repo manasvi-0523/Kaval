@@ -510,7 +510,9 @@ fun EmergencyCountdownScreen(onCancel: () -> Unit, onTriggered: () -> Unit) {
 }
 
 @Composable
-fun EmergencyModeScreen(state: KavalUiState, onStop: () -> Unit, onCallMock: () -> Unit) {
+fun EmergencyModeScreen(state: KavalUiState, onStop: () -> Unit) {
+    var mockCallMessage by remember { mutableStateOf<String?>(null) }
+
     KavalScreen {
         item {
             KavalGlassCard {
@@ -529,7 +531,23 @@ fun EmergencyModeScreen(state: KavalUiState, onStop: () -> Unit, onCallMock: () 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 KavalPrimaryButton("Stop Emergency Mode", onStop, Modifier.weight(1f), emergency = true)
-                KavalSecondaryButton("Call Trusted Contact", onCallMock, Modifier.weight(1f))
+                KavalSecondaryButton(
+                    "Call Trusted Contact",
+                    {
+                        mockCallMessage = state.contacts.firstOrNull()
+                            ?.let { "Mock call ready for ${it.name}. No real call was placed." }
+                            ?: "No trusted contact is available for a mock call."
+                    },
+                    Modifier.weight(1f)
+                )
+            }
+        }
+        mockCallMessage?.let { message ->
+            item {
+                KavalGlassCard {
+                    KavalSectionHeader("Mock call action")
+                    Text(message)
+                }
             }
         }
     }

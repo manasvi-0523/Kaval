@@ -105,7 +105,6 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                                 popUpTo(KavalRoutes.Home) { inclusive = true }
                             }
                         },
-                        onCallMock = { }
                     )
                 }
             }
