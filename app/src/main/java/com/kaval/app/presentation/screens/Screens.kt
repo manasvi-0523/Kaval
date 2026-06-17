@@ -1,5 +1,6 @@
 package com.kaval.app.presentation.screens
 
+import android.content.Intent
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.widget.Toast
@@ -220,8 +221,24 @@ fun HomeScreen(
                         Modifier.weight(1f)
                     )
                     KavalSecondaryButton(
-                        "WhatsApp Share",
-                        { Toast.makeText(context, "WhatsApp share confirmation: demo message prepared", Toast.LENGTH_SHORT).show() },
+                        "Google Share",
+                        {
+                            val shareText = """
+                                Kaval safety update:
+                                I am sharing my demo safety status.
+
+                                Location:
+                                https://maps.google.com/?q=Demo+Location
+
+                                Sent via Kaval.
+                            """.trimIndent()
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share safety update"))
+                            Toast.makeText(context, "Choose Messages, Gmail, or another app", Toast.LENGTH_SHORT).show()
+                        },
                         Modifier.weight(1f)
                     )
                 }

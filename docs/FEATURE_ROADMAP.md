@@ -48,17 +48,17 @@ Requirements:
 - Fused location provider or platform location manager.
 - Mock/demo fallback if location is unavailable.
 
-### WhatsApp Share
+### Google / Android Share
 
 Goal:
 
-- Prepare a safety message and open WhatsApp share.
+- Prepare a safety message with a Google Maps link and open Android's system share sheet.
 
 Requirements:
 
 - Android share intent.
-- Installed-app fallback.
-- No background WhatsApp automation.
+- Works with Google Messages, Gmail, WhatsApp, or any compatible installed app.
+- No background messaging automation.
 
 ## Guardian Mode
 
