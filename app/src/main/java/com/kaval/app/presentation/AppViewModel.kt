@@ -9,6 +9,7 @@ import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.SafetyStatus
 import com.kaval.app.domain.model.TrustedContact
 import com.kaval.app.domain.model.UserProfile
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -22,13 +23,27 @@ data class KavalUiState(
     val profile: UserProfile = UserProfile(),
     val appearance: AppearanceSettings = AppearanceSettings(),
     val safetyStatus: SafetyStatus = SafetyStatus(),
-    val emergencyMessage: String = ""
+    val emergencyMessage: String = "",
+    val guardianModeActive: Boolean = false,
+    val passiveSafetyActive: Boolean = false,
+    val journeyActive: Boolean = false,
+    val journeyPhase: String = "Before",
+    val journeyStatus: String = "No journey active"
+)
+
+private data class SafetyModes(
+    val guardianModeActive: Boolean = false,
+    val passiveSafetyActive: Boolean = false,
+    val journeyActive: Boolean = false,
+    val journeyPhase: String = "Before",
+    val journeyStatus: String = "No journey active"
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = (application as KavalApplication).repository
+    private val safetyModes = MutableStateFlow(SafetyModes())
 
-    val uiState: StateFlow<KavalUiState> = combine(
+    private val persistedState = combine(
         repository.contacts,
         repository.alerts,
         repository.demoMode,
@@ -48,6 +63,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 riskLevel = if (locationSharing) "Tracking Active" else "Safe Zone"
             ),
             emergencyMessage = buildEmergencyMessage(profile)
+        )
+    }
+
+    val uiState: StateFlow<KavalUiState> = combine(
+        persistedState,
+        safetyModes
+    ) { state, modes ->
+        state.copy(
+            guardianModeActive = modes.guardianModeActive,
+            passiveSafetyActive = modes.passiveSafetyActive,
+            journeyActive = modes.journeyActive,
+            journeyPhase = modes.journeyPhase,
+            journeyStatus = modes.journeyStatus
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KavalUiState())
 
@@ -97,6 +125,57 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveAppearance(settings: AppearanceSettings) = viewModelScope.launch {
         repository.saveAppearance(settings)
+    }
+
+    fun setGuardianMode(enabled: Boolean) {
+        val current = safetyModes.value
+        safetyModes.value = current.copy(
+            guardianModeActive = enabled,
+            passiveSafetyActive = if (enabled) true else current.passiveSafetyActive,
+            journeyStatus = if (enabled) "Guardian is watching your route" else if (current.journeyActive) current.journeyStatus else "No journey active"
+        )
+    }
+
+    fun setPassiveSafety(enabled: Boolean) {
+        val current = safetyModes.value
+        safetyModes.value = current.copy(
+            passiveSafetyActive = enabled,
+            journeyStatus = if (enabled && !current.journeyActive) {
+                "Passive monitoring active"
+            } else if (!enabled && !current.journeyActive) {
+                "No journey active"
+            } else {
+                current.journeyStatus
+            }
+        )
+    }
+
+    fun startJourney() {
+        safetyModes.value = safetyModes.value.copy(
+            journeyActive = true,
+            journeyPhase = "During",
+            journeyStatus = "Journey active - ETA 18 min",
+            guardianModeActive = true,
+            passiveSafetyActive = true
+        )
+    }
+
+    fun markBoarded() {
+        safetyModes.value = safetyModes.value.copy(
+            journeyActive = true,
+            journeyPhase = "During",
+            journeyStatus = "I've boarded - guardian update queued",
+            guardianModeActive = true
+        )
+    }
+
+    fun markReached() {
+        safetyModes.value = safetyModes.value.copy(
+            journeyActive = false,
+            journeyPhase = "After",
+            journeyStatus = "Arrived safely - guardian anxiety cleared",
+            guardianModeActive = false
+        )
     }
 }
 

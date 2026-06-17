@@ -1,5 +1,8 @@
 package com.kaval.app.presentation.screens
 
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,9 +25,11 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -40,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kaval.app.core.components.EmptyState
@@ -87,14 +94,30 @@ private fun KavalScreen(content: LazyListScope.() -> Unit) {
 }
 
 @Composable
-fun HomeScreen(state: KavalUiState, onSos: () -> Unit, onFakeCall: () -> Unit, onShareLocation: () -> Unit) {
+fun HomeScreen(
+    state: KavalUiState,
+    onSos: () -> Unit,
+    onSettings: () -> Unit,
+    onFakeCall: () -> Unit,
+    onShareLocation: () -> Unit,
+    onGuardianModeChange: (Boolean) -> Unit,
+    onPassiveSafetyChange: (Boolean) -> Unit,
+    onStartJourney: () -> Unit,
+    onBoarded: () -> Unit,
+    onReached: () -> Unit
+) {
+    val context = LocalContext.current
     KavalScreen {
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onSettings) {
+                    Icon(Icons.Default.Menu, contentDescription = "Open settings", tint = MaterialTheme.colorScheme.onBackground)
+                }
                 Column {
                     Text("KAVAL", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
                     Text("Personal safety companion", color = KavalColors.Muted)
                 }
+                Spacer(Modifier.weight(1f))
                 if (state.demoMode) KavalStatusBadge("Demo Mode", KavalColors.Trust)
             }
         }
@@ -119,9 +142,89 @@ fun HomeScreen(state: KavalUiState, onSos: () -> Unit, onFakeCall: () -> Unit, o
             }
         }
         item {
+            KavalGlassCard {
+                KavalSectionHeader("Guardian Mode", state.journeyStatus)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Guardian monitoring", fontWeight = FontWeight.Bold)
+                        Text(if (state.guardianModeActive) "Live state: ON" else "Live state: OFF", color = KavalColors.Muted)
+                    }
+                    Switch(state.guardianModeActive, onGuardianModeChange)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Passive Safety Mode", fontWeight = FontWeight.Bold)
+                        Text(if (state.passiveSafetyActive) "Monitoring quietly in background" else "Manual safety only", color = KavalColors.Muted)
+                    }
+                    Switch(state.passiveSafetyActive, onPassiveSafetyChange)
+                }
+                KavalStatusBadge(
+                    text = if (state.passiveSafetyActive) "Passive Safety Active" else "Passive Safety Idle",
+                    color = if (state.passiveSafetyActive) KavalColors.Safe else KavalColors.Muted
+                )
+            }
+        }
+        item {
+            KavalGlassCard {
+                KavalSectionHeader("Journey Timeline", "Before / During / After")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Before", "During", "After").forEach { phase ->
+                        KavalStatusBadge(
+                            text = phase,
+                            color = if (state.journeyPhase == phase) KavalColors.Trust else KavalColors.Muted,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                Text(if (state.journeyActive) "Live ETA: 18 min" else "Start a journey before boarding.")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    KavalPrimaryButton("Start Journey", onStartJourney, Modifier.weight(1f))
+                    KavalSecondaryButton("Arrived Safely", onReached, Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    KavalSecondaryButton(
+                        "I've boarded",
+                        {
+                            onBoarded()
+                            Toast.makeText(context, "Boarding update queued for guardian", Toast.LENGTH_SHORT).show()
+                        },
+                        Modifier.weight(1f)
+                    )
+                    KavalSecondaryButton(
+                        "I've reached",
+                        {
+                            onReached()
+                            Toast.makeText(context, "Reached safely update queued", Toast.LENGTH_SHORT).show()
+                        },
+                        Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+        item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuickAction("Fake Call", Icons.Default.Call, Modifier.weight(1f), onFakeCall)
-                QuickAction("Share Location", Icons.Default.LocationOn, Modifier.weight(1f), onShareLocation)
+                QuickAction("Share Location", Icons.Default.LocationOn, Modifier.weight(1f)) {
+                    Toast.makeText(context, "Demo location ready to share", Toast.LENGTH_SHORT).show()
+                    onShareLocation()
+                }
+            }
+        }
+        item {
+            KavalGlassCard {
+                KavalSectionHeader("Practical Escapes")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    KavalSecondaryButton(
+                        "Quick Exit Script",
+                        { Toast.makeText(context, "Excuse message queued for trusted contact", Toast.LENGTH_SHORT).show() },
+                        Modifier.weight(1f)
+                    )
+                    KavalSecondaryButton(
+                        "WhatsApp Share",
+                        { Toast.makeText(context, "WhatsApp share confirmation: demo message prepared", Toast.LENGTH_SHORT).show() },
+                        Modifier.weight(1f)
+                    )
+                }
             }
         }
         item {
@@ -145,13 +248,31 @@ fun HomeScreen(state: KavalUiState, onSos: () -> Unit, onFakeCall: () -> Unit, o
 fun MapScreen(state: KavalUiState) {
     KavalScreen {
         item {
-            KavalSectionHeader("Safety Map", "Demo map data")
+            KavalSectionHeader("Safety Map", "Demo map data - live GPS is not enabled in this MVP.")
         }
         item {
             KavalGlassCard {
                 Text("Current area", fontWeight = FontWeight.Bold)
                 Text("Demo Location")
                 KavalStatusBadge("Tracking Active", KavalColors.Trust)
+                Text("Real location will require Android location permission and a map provider in the next build.")
+            }
+        }
+        item {
+            KavalGlassCard {
+                KavalSectionHeader("Route Preview", "Mock safety zones around your journey")
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
+                        .padding(16.dp)
+                ) {
+                    KavalStatusBadge("You", KavalColors.Trust, Modifier.align(Alignment.BottomStart))
+                    KavalStatusBadge("Safe Zone", KavalColors.Safe, Modifier.align(Alignment.TopStart))
+                    KavalStatusBadge("Caution", KavalColors.Warning, Modifier.align(Alignment.Center))
+                    KavalStatusBadge("Avoid", KavalColors.Emergency, Modifier.align(Alignment.TopEnd))
+                }
             }
         }
         item { KavalRiskCard("Safe Zone", "Well-lit public route with normal activity.", KavalColors.Safe, Icons.Default.CheckCircle) }
@@ -408,6 +529,7 @@ private fun ChoiceGroup(title: String, options: List<String>, selected: String, 
 
 @Composable
 fun FakeCallScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var caller by remember { mutableStateOf("Mom") }
     var delayLabel by remember { mutableStateOf("Immediate") }
     var incoming by remember { mutableStateOf(false) }
@@ -422,6 +544,16 @@ fun FakeCallScreen(onBack: () -> Unit) {
             scheduledDelaySeconds = 0
             incoming = true
         }
+    }
+
+    DisposableEffect(incoming, answered) {
+        var ringtone: Ringtone? = null
+        if (incoming && !answered) {
+            val toneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            ringtone = RingtoneManager.getRingtone(context, toneUri)
+            ringtone?.play()
+        }
+        onDispose { ringtone?.stop() }
     }
 
     Scaffold(topBar = { KavalTopBar("Fake Call", onBack) }) { padding ->

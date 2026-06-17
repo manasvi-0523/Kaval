@@ -34,7 +34,7 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
     val currentRoute = backStackEntry?.destination?.route
     val bottomRoutes = BottomNavItems.map { it.route }.toSet()
 
-    KavalTheme(themeMode = state.appearance.themeMode) {
+    KavalTheme(settings = state.appearance) {
         Scaffold(
             bottomBar = {
                 if (currentRoute in bottomRoutes) {
@@ -56,8 +56,14 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                     HomeScreen(
                         state = state,
                         onSos = { navController.navigate(KavalRoutes.Countdown) },
+                        onSettings = { navController.navigate(KavalRoutes.Settings) },
                         onFakeCall = { navController.navigate(KavalRoutes.FakeCall) },
-                        onShareLocation = { navController.navigate(KavalRoutes.Map) }
+                        onShareLocation = { navController.navigate(KavalRoutes.Map) },
+                        onGuardianModeChange = viewModel::setGuardianMode,
+                        onPassiveSafetyChange = viewModel::setPassiveSafety,
+                        onStartJourney = viewModel::startJourney,
+                        onBoarded = viewModel::markBoarded,
+                        onReached = viewModel::markReached
                     )
                 }
                 composable(KavalRoutes.Map) { MapScreen(state) }

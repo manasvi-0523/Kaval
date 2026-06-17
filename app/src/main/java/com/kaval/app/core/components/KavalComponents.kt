@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContactPhone
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -251,8 +250,7 @@ val BottomNavItems = listOf(
     KavalNavItem("home", "Home", Icons.Default.Home),
     KavalNavItem("map", "Map", Icons.Default.Map),
     KavalNavItem("contacts", "Contacts", Icons.Default.ContactPhone),
-    KavalNavItem("activity", "Activity", Icons.Default.Warning),
-    KavalNavItem("settings", "Settings", Icons.Default.Settings)
+    KavalNavItem("activity", "Activity", Icons.Default.Warning)
 )
 
 @Composable

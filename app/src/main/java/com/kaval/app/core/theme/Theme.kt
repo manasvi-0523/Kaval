@@ -7,6 +7,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import com.kaval.app.domain.model.AppearanceSettings
 
 object KavalColors {
     val Background = Color(0xFF0B1220)
@@ -48,16 +49,34 @@ private val LightScheme = lightColorScheme(
     onSurface = Color(0xFF111827)
 )
 
+private val HighContrastScheme = darkColorScheme(
+    primary = Color(0xFF7CC7FF),
+    secondary = Color(0xFF32D583),
+    tertiary = Color(0xFFFFC24A),
+    error = Color(0xFFFF453A),
+    background = Color.Black,
+    surface = Color(0xFF101010),
+    onPrimary = Color.Black,
+    onSecondary = Color.Black,
+    onTertiary = Color.Black,
+    onBackground = Color.White,
+    onSurface = Color.White
+)
+
 @Composable
 fun KavalTheme(
-    themeMode: String = "Dark",
+    settings: AppearanceSettings = AppearanceSettings(),
     content: @Composable () -> Unit
 ) {
-    val useDark = when (themeMode) {
+    val useDark = when (settings.themeMode) {
         "Light" -> false
         "System Default" -> isSystemInDarkTheme()
         else -> true
     }
-    val scheme: ColorScheme = if (useDark) DarkScheme else LightScheme
+    val scheme: ColorScheme = when (settings.themeMode) {
+        "Emergency High Contrast" -> HighContrastScheme
+        "Light" -> LightScheme
+        else -> if (useDark) DarkScheme else LightScheme
+    }
     MaterialTheme(colorScheme = scheme, typography = androidx.compose.material3.Typography(), content = content)
 }
