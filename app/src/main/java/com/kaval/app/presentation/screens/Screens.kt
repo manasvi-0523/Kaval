@@ -1,8 +1,14 @@
 package com.kaval.app.presentation.screens
 
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +83,7 @@ import com.kaval.app.domain.model.TrustedContact
 import com.kaval.app.domain.model.UserProfile
 import com.kaval.app.presentation.KavalUiState
 import kotlinx.coroutines.delay
+import java.util.Locale
 
 @Composable
 private fun KavalScreen(content: LazyListScope.() -> Unit) {
@@ -421,7 +428,14 @@ fun SettingsScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Demo Mode", fontWeight = FontWeight.Bold)
-                        Text("No real alerts, contact notifications, SMS, or calls.", color = KavalColors.Muted)
+                        Text(
+                            if (state.demoMode) {
+                                "Real SMS is blocked. SOS alerts are simulated only."
+                            } else {
+                                "Real SMS fallback can send to trusted contacts after permission."
+                            },
+                            color = KavalColors.Muted
+                        )
                     }
                     Switch(checked = state.demoMode, onCheckedChange = onDemoModeChange)
                 }
@@ -551,26 +565,76 @@ fun FakeCallScreen(onBack: () -> Unit) {
     var delayLabel by remember { mutableStateOf("Immediate") }
     var incoming by remember { mutableStateOf(false) }
     var answered by remember { mutableStateOf(false) }
-    var scheduledDelaySeconds by remember { mutableIntStateOf(0) }
+    var remainingDelaySeconds by remember { mutableIntStateOf(0) }
+    var scheduleGeneration by remember { mutableIntStateOf(0) }
+    var ttsReady by remember { mutableStateOf(false) }
+    var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
     val callers = listOf("Mom", "Brother", "Friend", "Emergency Contact")
     val delays = listOf("Immediate", "10 sec", "30 sec", "1 min")
 
-    LaunchedEffect(scheduledDelaySeconds) {
-        if (scheduledDelaySeconds > 0) {
-            delay(scheduledDelaySeconds * 1_000L)
-            scheduledDelaySeconds = 0
+    DisposableEffect(context) {
+        val engine = TextToSpeech(context) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeech?.language = Locale.getDefault()
+            }
+        }
+        textToSpeech = engine
+        onDispose {
+            engine.stop()
+            engine.shutdown()
+            textToSpeech = null
+        }
+    }
+
+    LaunchedEffect(scheduleGeneration) {
+        if (remainingDelaySeconds > 0) {
+            while (remainingDelaySeconds > 0) {
+                delay(1_000L)
+                remainingDelaySeconds -= 1
+            }
             incoming = true
         }
     }
 
     DisposableEffect(incoming, answered) {
         var ringtone: Ringtone? = null
+        val vibrator = context.kavalVibrator()
         if (incoming && !answered) {
-            val toneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val toneUri = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             ringtone = RingtoneManager.getRingtone(context, toneUri)
+            ringtone?.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ringtone?.isLooping = true
             ringtone?.play()
+            val vibrationPattern = longArrayOf(0, 700, 500, 700, 1_200)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(VibrationEffect.createWaveform(vibrationPattern, 0))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(vibrationPattern, 0)
+            }
         }
-        onDispose { ringtone?.stop() }
+        onDispose {
+            ringtone?.stop()
+            vibrator?.cancel()
+        }
+    }
+
+    LaunchedEffect(answered, ttsReady) {
+        if (answered && ttsReady) {
+            delay(700)
+            val script = when (caller) {
+                "Mom" -> "Hi, I need you to come home now. I am waiting for you."
+                "Brother" -> "Hey, where are you? I need to pick you up right away."
+                "Friend" -> "Hi, something urgent came up. Please meet me outside now."
+                else -> "Hello. Please move to a safe place and call me back immediately."
+            }
+            textToSpeech?.speak(script, TextToSpeech.QUEUE_FLUSH, null, "kaval_fake_call")
+        }
     }
 
     Scaffold(topBar = { KavalTopBar("Fake Call", onBack) }) { padding ->
@@ -587,9 +651,14 @@ fun FakeCallScreen(onBack: () -> Unit) {
                     Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(72.dp), tint = KavalColors.Safe)
                     Text(if (answered) "Call in progress" else "Incoming call", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Text(caller, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        KavalPrimaryButton("Answer", { answered = true }, emergency = false)
-                        KavalPrimaryButton("Decline", { incoming = false; answered = false }, emergency = true)
+                    if (answered) {
+                        Text(if (ttsReady) "Caller audio is playing" else "Preparing caller audio...", color = Color.White.copy(alpha = 0.78f))
+                        KavalPrimaryButton("End Call", { incoming = false; answered = false }, emergency = true)
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            KavalPrimaryButton("Answer", { answered = true }, emergency = false)
+                            KavalPrimaryButton("Decline", { incoming = false; answered = false }, emergency = true)
+                        }
                     }
                 }
             }
@@ -606,29 +675,49 @@ fun FakeCallScreen(onBack: () -> Unit) {
                 item { ChoiceGroup("Delay", delays, delayLabel) { delayLabel = it } }
                 item {
                     KavalPrimaryButton(
-                        text = if (scheduledDelaySeconds > 0) "Fake Call Scheduled" else "Start Fake Call",
+                        text = if (remainingDelaySeconds > 0) "Fake Call Scheduled" else "Start Fake Call",
                         onClick = {
-                            scheduledDelaySeconds = when (delayLabel) {
+                            remainingDelaySeconds = when (delayLabel) {
                                 "10 sec" -> 10
                                 "30 sec" -> 30
                                 "1 min" -> 60
                                 else -> 0
                             }
-                            if (scheduledDelaySeconds == 0) incoming = true
+                            if (remainingDelaySeconds == 0) {
+                                incoming = true
+                            } else {
+                                scheduleGeneration += 1
+                            }
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                if (scheduledDelaySeconds > 0) {
+                if (remainingDelaySeconds > 0) {
                     item {
                         KavalGlassCard {
-                            Text("Incoming fake call will appear in $scheduledDelaySeconds seconds.")
-                            KavalSecondaryButton("Cancel Scheduled Call", { scheduledDelaySeconds = 0 }, Modifier.fillMaxWidth())
+                            Text("Incoming fake call will appear in $remainingDelaySeconds seconds.")
+                            KavalSecondaryButton(
+                                "Cancel Scheduled Call",
+                                {
+                                    scheduleGeneration += 1
+                                    remainingDelaySeconds = 0
+                                },
+                                Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun android.content.Context.kavalVibrator(): Vibrator? {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        getSystemService(VibratorManager::class.java)?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        getSystemService(Vibrator::class.java)
     }
 }
 

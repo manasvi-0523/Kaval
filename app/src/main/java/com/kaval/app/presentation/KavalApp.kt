@@ -1,10 +1,23 @@
 package com.kaval.app.presentation
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.telephony.SmsManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -29,10 +42,54 @@ import com.kaval.app.presentation.screens.SettingsScreen
 @Composable
 fun KavalApp(viewModel: AppViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val bottomRoutes = BottomNavItems.map { it.route }.toSet()
+    var pendingEmergencyAfterPermission by remember { mutableStateOf(false) }
+
+    fun enterEmergencyMode() {
+        viewModel.triggerEmergency()
+        navController.navigate(KavalRoutes.EmergencyMode) {
+            popUpTo(KavalRoutes.Home)
+        }
+    }
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (pendingEmergencyAfterPermission) {
+            if (granted) {
+                sendSmsAlerts(context, state)
+            } else {
+                Toast.makeText(context, "SMS permission denied. Emergency logged locally.", Toast.LENGTH_LONG).show()
+            }
+            pendingEmergencyAfterPermission = false
+            enterEmergencyMode()
+        }
+    }
+
+    fun triggerEmergencyFlow() {
+        if (state.demoMode) {
+            Toast.makeText(context, "Demo Mode: SOS simulated. No SMS sent.", Toast.LENGTH_LONG).show()
+            enterEmergencyMode()
+            return
+        }
+
+        val hasSmsPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasSmsPermission) {
+            sendSmsAlerts(context, state)
+            enterEmergencyMode()
+        } else {
+            pendingEmergencyAfterPermission = true
+            smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+        }
+    }
 
     KavalTheme(settings = state.appearance) {
         Scaffold(
@@ -94,12 +151,7 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                 composable(KavalRoutes.Countdown) {
                     EmergencyCountdownScreen(
                         onCancel = { navController.popBackStack() },
-                        onTriggered = {
-                            viewModel.triggerEmergency()
-                            navController.navigate(KavalRoutes.EmergencyMode) {
-                                popUpTo(KavalRoutes.Home)
-                            }
-                        }
+                        onTriggered = { triggerEmergencyFlow() }
                     )
                 }
                 composable(KavalRoutes.EmergencyMode) {
@@ -116,4 +168,53 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
             }
         }
     }
+}
+
+private fun sendSmsAlerts(context: Context, state: KavalUiState): Boolean {
+    val contacts = state.contacts.filter { contact ->
+        contact.phoneNumber.any { it.isDigit() }
+    }
+
+    if (contacts.isEmpty()) {
+        Toast.makeText(context, "No valid trusted contact numbers found. Emergency logged locally.", Toast.LENGTH_LONG).show()
+        return false
+    }
+
+    return try {
+        val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService(SmsManager::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            SmsManager.getDefault()
+        }
+        val message = buildSmsAlertMessage(state)
+        contacts.forEach { contact ->
+            val parts = smsManager.divideMessage(message)
+            smsManager.sendMultipartTextMessage(contact.phoneNumber, null, parts, null, null)
+        }
+        Toast.makeText(context, "SOS SMS sent to ${contacts.size} trusted contacts.", Toast.LENGTH_LONG).show()
+        true
+    } catch (error: SecurityException) {
+        Toast.makeText(context, "SMS permission is required for offline SOS.", Toast.LENGTH_LONG).show()
+        false
+    } catch (error: RuntimeException) {
+        Toast.makeText(context, "Could not send SMS. Emergency logged locally.", Toast.LENGTH_LONG).show()
+        false
+    }
+}
+
+private fun buildSmsAlertMessage(state: KavalUiState): String {
+    return """
+        Emergency Alert from ${state.profile.name}.
+
+        ${state.profile.emergencyNote}
+
+        Location:
+        Demo Location
+
+        Time:
+        ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}
+
+        Sent via Kaval.
+    """.trimIndent()
 }

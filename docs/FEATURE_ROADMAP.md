@@ -20,6 +20,12 @@ This roadmap tracks requested features after the first working Android MVP.
 
 ### Real SMS SOS
 
+Status:
+
+- Phase 1 implemented: when Demo Mode is off, SOS requests Android `SEND_SMS` permission and sends the emergency message to trusted contacts with valid phone numbers.
+- Demo Mode remains the default and blocks real SMS.
+- If permission is denied or SMS fails, Kaval still logs the emergency locally and enters Emergency Mode.
+
 Goal:
 
 - Send SMS to trusted contacts during SOS.
@@ -32,7 +38,7 @@ Requirements:
 - Clear user opt-in.
 - Contact phone validation.
 - Fallback if permission is denied.
-- Activity log entry for success/failure.
+- Future: activity log entry should distinguish SMS success/failure instead of only logging the SOS state.
 
 ### Live Location
 
