@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kaval.app.KavalApplication
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
+import com.kaval.app.domain.model.KavalLocationState
 import com.kaval.app.domain.model.SafetyStatus
 import com.kaval.app.domain.model.TrustedContact
 import com.kaval.app.domain.model.UserProfile
@@ -24,6 +25,7 @@ data class KavalUiState(
     val appearance: AppearanceSettings = AppearanceSettings(),
     val safetyStatus: SafetyStatus = SafetyStatus(),
     val emergencyMessage: String = "",
+    val locationState: KavalLocationState = KavalLocationState(),
     val guardianModeActive: Boolean = false,
     val passiveSafetyActive: Boolean = false,
     val journeyActive: Boolean = false,
@@ -40,7 +42,9 @@ private data class SafetyModes(
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = (application as KavalApplication).repository
+    private val kavalApplication = application as KavalApplication
+    private val repository = kavalApplication.repository
+    private val locationTracker = kavalApplication.locationTracker
     private val safetyModes = MutableStateFlow(SafetyModes())
 
     private val persistedState = combine(
@@ -68,9 +72,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val uiState: StateFlow<KavalUiState> = combine(
         persistedState,
-        safetyModes
-    ) { state, modes ->
+        safetyModes,
+        locationTracker.state
+    ) { state, modes, locationState ->
         state.copy(
+            locationState = locationState,
             guardianModeActive = modes.guardianModeActive,
             passiveSafetyActive = modes.passiveSafetyActive,
             journeyActive = modes.journeyActive,
@@ -78,6 +84,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             journeyStatus = modes.journeyStatus
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KavalUiState())
+
+    init {
+        locationTracker.refreshPermissionState()
+    }
+
+    fun refreshLocationPermission() {
+        locationTracker.refreshPermissionState()
+    }
+
+    fun refreshLocation() = viewModelScope.launch {
+        locationTracker.refreshLocation()
+    }
 
     fun saveContact(contact: TrustedContact) = viewModelScope.launch {
         repository.saveContact(contact)

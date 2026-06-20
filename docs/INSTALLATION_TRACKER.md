@@ -170,6 +170,22 @@ Debug APK:
 C:\Users\Lenovo\Desktop\kaval\Kaval\app\build\outputs\apk\debug\app-debug.apk
 ```
 
+## Phase 1 GPS Dependencies
+
+Added to the Android application through Gradle on June 20, 2026:
+
+```text
+com.google.android.gms:play-services-location:21.3.0
+org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0
+```
+
+Purpose:
+
+- Google Play services fused location provider for last-known and fresh device location.
+- Coroutine support for safely awaiting Google Play services location tasks.
+
+These artifacts are stored in the normal Gradle cache; no separate executable or global program was installed.
+
 ## Diagnostic Logs
 
 Temporary emulator logs generated during debugging:

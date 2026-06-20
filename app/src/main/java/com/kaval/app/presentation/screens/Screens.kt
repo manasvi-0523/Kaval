@@ -1,6 +1,8 @@
 package com.kaval.app.presentation.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -65,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.kaval.app.core.components.EmptyState
 import com.kaval.app.core.components.KavalActivityCard
 import com.kaval.app.core.components.KavalContactCard
@@ -79,6 +82,8 @@ import com.kaval.app.core.components.QuickAction
 import com.kaval.app.core.theme.KavalColors
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
+import com.kaval.app.domain.model.LocationPermissionLevel
+import com.kaval.app.domain.model.LocationStatus
 import com.kaval.app.domain.model.TrustedContact
 import com.kaval.app.domain.model.UserProfile
 import com.kaval.app.presentation.KavalUiState
@@ -145,8 +150,13 @@ fun HomeScreen(
         }
         item {
             KavalGlassCard {
-                Text("Trusted Contacts: ${state.contacts.size} active", fontWeight = FontWeight.SemiBold)
-                Text("Location Sharing: ${if (state.safetyStatus.locationSharingActive) "ON" else "OFF"}")
+                KavalSectionHeader("Safety readiness")
+                Text("Location: ${state.locationState.readinessLabel()}")
+                Text(
+                    "SMS: ${if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) "Ready" else "Permission needed"}"
+                )
+                Text("Trusted Contacts: ${state.contacts.size}")
+                Text("Mode: ${if (state.demoMode) "Demo" else "Real"}")
             }
         }
         item {
@@ -269,22 +279,52 @@ fun HomeScreen(
 }
 
 @Composable
-fun MapScreen(state: KavalUiState) {
+fun MapScreen(
+    state: KavalUiState,
+    onRequestLocationPermission: () -> Unit,
+    onRefreshLocation: () -> Unit
+) {
+    val locationState = state.locationState
     KavalScreen {
         item {
-            KavalSectionHeader("Safety Map", "Demo map data - live GPS is not enabled in this MVP.")
+            KavalSectionHeader("Safety Map", "Real device location without stored movement history.")
         }
         item {
             KavalGlassCard {
-                Text("Current area", fontWeight = FontWeight.Bold)
-                Text("Demo Location")
-                KavalStatusBadge("Tracking Active", KavalColors.Trust)
-                Text("Real location will require Android location permission and a map provider in the next build.")
+                KavalSectionHeader(locationState.status.displayLabel())
+                Text(locationState.message, color = KavalColors.Muted)
+                locationState.location?.let { location ->
+                    location.accuracyMeters?.let { accuracy ->
+                        Text("Accuracy: ${accuracy.toInt()} m")
+                    }
+                    Text("Updated: ${formatLocationAge(location.timestampMillis)}")
+                    Text(
+                        if (locationState.permissionLevel == LocationPermissionLevel.PRECISE) {
+                            "Precise location permission active"
+                        } else {
+                            "Approximate location permission active"
+                        }
+                    )
+                }
+                if (locationState.status == LocationStatus.PERMISSION_NEEDED) {
+                    Text("Kaval uses location only when you request safety features. Background location is not requested.")
+                    KavalPrimaryButton(
+                        "Allow Location",
+                        onRequestLocationPermission,
+                        Modifier.fillMaxWidth()
+                    )
+                } else {
+                    KavalSecondaryButton(
+                        "Refresh Location",
+                        onRefreshLocation,
+                        Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader("Route Preview", "Mock safety zones around your journey")
+                KavalSectionHeader("Location preview")
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -292,16 +332,52 @@ fun MapScreen(state: KavalUiState) {
                         .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
                         .padding(16.dp)
                 ) {
-                    KavalStatusBadge("You", KavalColors.Trust, Modifier.align(Alignment.BottomStart))
-                    KavalStatusBadge("Safe Zone", KavalColors.Safe, Modifier.align(Alignment.TopStart))
-                    KavalStatusBadge("Caution", KavalColors.Warning, Modifier.align(Alignment.Center))
-                    KavalStatusBadge("Avoid", KavalColors.Emergency, Modifier.align(Alignment.TopEnd))
+                    KavalStatusBadge(
+                        locationState.status.displayLabel(),
+                        when (locationState.status) {
+                            LocationStatus.LIVE -> KavalColors.Safe
+                            LocationStatus.APPROXIMATE, LocationStatus.STALE -> KavalColors.Warning
+                            LocationStatus.PERMISSION_NEEDED, LocationStatus.UNAVAILABLE -> KavalColors.Emergency
+                            LocationStatus.WAITING_FOR_GPS -> KavalColors.Trust
+                        },
+                        Modifier.align(Alignment.Center)
+                    )
                 }
+                Text("The interactive Google Map is scheduled for Phase 4. Phase 1 verifies the phone's real GPS state.")
             }
         }
-        item { KavalRiskCard("Safe Zone", "Well-lit public route with normal activity.", KavalColors.Safe, Icons.Default.CheckCircle) }
-        item { KavalRiskCard("Caution Area", "Lower visibility and fewer public checkpoints.", KavalColors.Warning, Icons.Default.Info) }
-        item { KavalRiskCard("High Risk Area", "Avoid route in demo safety data.", KavalColors.Emergency, Icons.Default.Warning) }
+    }
+}
+
+private fun com.kaval.app.domain.model.KavalLocationState.readinessLabel(): String {
+    return when (status) {
+        LocationStatus.LIVE -> "Ready"
+        LocationStatus.APPROXIMATE -> "Approximate"
+        LocationStatus.STALE -> "Stale"
+        LocationStatus.WAITING_FOR_GPS -> "Waiting"
+        LocationStatus.PERMISSION_NEEDED -> "Permission needed"
+        LocationStatus.UNAVAILABLE -> "Unavailable"
+    }
+}
+
+private fun LocationStatus.displayLabel(): String {
+    return when (this) {
+        LocationStatus.PERMISSION_NEEDED -> "Permission Needed"
+        LocationStatus.WAITING_FOR_GPS -> "Waiting for GPS"
+        LocationStatus.LIVE -> "Live Location Active"
+        LocationStatus.APPROXIMATE -> "Approximate Location Only"
+        LocationStatus.STALE -> "Location Stale"
+        LocationStatus.UNAVAILABLE -> "Location Unavailable"
+    }
+}
+
+private fun formatLocationAge(timestampMillis: Long): String {
+    val ageSeconds = ((System.currentTimeMillis() - timestampMillis).coerceAtLeast(0L) / 1_000L)
+    return when {
+        ageSeconds < 10 -> "Just now"
+        ageSeconds < 60 -> "$ageSeconds seconds ago"
+        ageSeconds < 3_600 -> "${ageSeconds / 60} minutes ago"
+        else -> "Over an hour ago"
     }
 }
 

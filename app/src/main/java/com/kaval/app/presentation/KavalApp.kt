@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +49,21 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
     val currentRoute = backStackEntry?.destination?.route
     val bottomRoutes = BottomNavItems.map { it.route }.toSet()
     var pendingEmergencyAfterPermission by remember { mutableStateOf(false) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        viewModel.refreshLocationPermission()
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        ) {
+            viewModel.refreshLocation()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshLocation()
+    }
 
     fun enterEmergencyMode() {
         viewModel.triggerEmergency()
@@ -123,7 +139,20 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                         onReached = viewModel::markReached
                     )
                 }
-                composable(KavalRoutes.Map) { MapScreen(state) }
+                composable(KavalRoutes.Map) {
+                    MapScreen(
+                        state = state,
+                        onRequestLocationPermission = {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        },
+                        onRefreshLocation = viewModel::refreshLocation
+                    )
+                }
                 composable(KavalRoutes.Contacts) {
                     ContactsScreen(
                         contacts = state.contacts,

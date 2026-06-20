@@ -1,5 +1,36 @@
 package com.kaval.app.domain.model
 
+data class KavalLocation(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float?,
+    val timestampMillis: Long,
+    val providerStatus: String?,
+    val mapsLink: String
+)
+
+enum class LocationPermissionLevel {
+    NONE,
+    APPROXIMATE,
+    PRECISE
+}
+
+enum class LocationStatus {
+    PERMISSION_NEEDED,
+    WAITING_FOR_GPS,
+    LIVE,
+    APPROXIMATE,
+    STALE,
+    UNAVAILABLE
+}
+
+data class KavalLocationState(
+    val location: KavalLocation? = null,
+    val permissionLevel: LocationPermissionLevel = LocationPermissionLevel.NONE,
+    val status: LocationStatus = LocationStatus.PERMISSION_NEEDED,
+    val message: String = "Location permission is needed for live safety features."
+)
+
 data class UserProfile(
     val name: String = "Kaval User",
     val phoneNumber: String = "",
