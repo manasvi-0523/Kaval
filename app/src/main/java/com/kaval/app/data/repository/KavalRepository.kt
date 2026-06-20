@@ -5,6 +5,7 @@ import com.kaval.app.data.local.dao.EmergencyAlertDao
 import com.kaval.app.data.local.dao.TrustedContactDao
 import com.kaval.app.data.local.entities.toDomain
 import com.kaval.app.data.local.entities.toEntity
+import com.kaval.app.data.local.entities.SmsDeliveryEntity
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.TrustedContact
@@ -35,6 +36,19 @@ class KavalRepository(
     suspend fun deleteContact(contact: TrustedContact) = contactDao.delete(contact.toEntity())
 
     suspend fun saveAlert(alert: EmergencyAlert): Long = alertDao.insert(alert.toEntity())
+
+    suspend fun initializeSmsDeliveries(alertId: Long, contacts: List<TrustedContact>) {
+        alertDao.insertDeliveries(
+            contacts.map { contact ->
+                SmsDeliveryEntity(alertId, contact.id, contact.name)
+            }
+        )
+    }
+
+    suspend fun updateSmsDelivery(alertId: Long, contactId: Long, status: String) {
+        alertDao.updateDelivery(alertId, contactId, status, System.currentTimeMillis())
+        alertDao.refreshDeliverySummary(alertId)
+    }
 
     suspend fun setDemoMode(enabled: Boolean) = preferences.setDemoMode(enabled)
 

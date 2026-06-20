@@ -473,7 +473,7 @@ private fun ContactDialog(initial: TrustedContact?, onDismiss: () -> Unit, onSav
 @Composable
 fun ActivityLogScreen(alerts: List<EmergencyAlert>) {
     KavalScreen {
-        item { KavalSectionHeader("Activity Log", "Emergency history and mock alert records.") }
+        item { KavalSectionHeader("Safety Logs", "Verified emergency, location, and SMS outcomes.") }
         if (alerts.isEmpty()) {
             item { EmptyState("No emergency activity yet.") }
         } else {
@@ -826,20 +826,24 @@ fun EmergencyCountdownScreen(onCancel: () -> Unit, onTriggered: () -> Unit) {
 @Composable
 fun EmergencyModeScreen(state: KavalUiState, onStop: () -> Unit) {
     var mockCallMessage by remember { mutableStateOf<String?>(null) }
+    val alert = state.alerts.firstOrNull()
 
     KavalScreen {
         item {
             KavalGlassCard {
-                KavalStatusBadge("Alert Sent", KavalColors.Emergency)
-                Text("Location Sharing Active", fontWeight = FontWeight.Bold)
-                Text("Trusted Contacts Notified: ${state.contacts.size}")
-                Text("Emergency ID: ${state.alerts.firstOrNull()?.id ?: "Pending"}")
+                KavalStatusBadge(if (alert?.isDemo == true) "Demo Alert" else "Emergency Active", KavalColors.Emergency)
+                Text(alert?.locationLabel ?: "Checking location", fontWeight = FontWeight.Bold)
+                Text("SMS status: ${alert?.smsStatus?.replace('_', ' ') ?: "queued"}")
+                Text("Sent: ${alert?.sentCount ?: 0}/${alert?.contactsAttempted ?: 0}")
+                Text("Delivered: ${alert?.deliveredCount ?: 0}")
+                Text("Failed: ${alert?.failedCount ?: 0}")
+                Text("Emergency ID: ${alert?.id ?: "Pending"}")
             }
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader("Simulated alert message")
-                Text(state.emergencyMessage)
+                KavalSectionHeader(if (alert?.isDemo == true) "Simulated alert" else "SOS location")
+                Text(alert?.mapsLink ?: "Location unavailable. Please try calling immediately.")
             }
         }
         item {

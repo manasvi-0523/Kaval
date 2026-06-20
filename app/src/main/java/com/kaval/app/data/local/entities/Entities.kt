@@ -22,7 +22,25 @@ data class EmergencyAlertEntity(
     val status: String,
     val locationLabel: String,
     val contactsNotified: Int,
-    val isDemo: Boolean
+    val isDemo: Boolean,
+    val locationStatus: String,
+    val mapsLink: String?,
+    val smsStatus: String,
+    val sentCount: Int,
+    val deliveredCount: Int,
+    val failedCount: Int,
+    val contactsAttempted: Int,
+    val permissionStatus: String,
+    val errorReason: String?
+)
+
+@Entity(tableName = "sms_deliveries", primaryKeys = ["alertId", "contactId"])
+data class SmsDeliveryEntity(
+    val alertId: Long,
+    val contactId: Long,
+    val contactName: String,
+    val status: String = "queued",
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 fun TrustedContactEntity.toDomain() = TrustedContact(id, name, phoneNumber, relationship, isPrimary)
@@ -35,7 +53,16 @@ fun EmergencyAlertEntity.toDomain() = EmergencyAlert(
     status = status,
     locationLabel = locationLabel,
     contactsNotified = contactsNotified,
-    isDemo = isDemo
+    isDemo = isDemo,
+    locationStatus = locationStatus,
+    mapsLink = mapsLink,
+    smsStatus = smsStatus,
+    sentCount = sentCount,
+    deliveredCount = deliveredCount,
+    failedCount = failedCount,
+    contactsAttempted = contactsAttempted,
+    permissionStatus = permissionStatus,
+    errorReason = errorReason
 )
 
 fun EmergencyAlert.toEntity() = EmergencyAlertEntity(
@@ -45,5 +72,14 @@ fun EmergencyAlert.toEntity() = EmergencyAlertEntity(
     status = status,
     locationLabel = locationLabel,
     contactsNotified = contactsNotified,
-    isDemo = isDemo
+    isDemo = isDemo,
+    locationStatus = locationStatus,
+    mapsLink = mapsLink,
+    smsStatus = smsStatus,
+    sentCount = sentCount,
+    deliveredCount = deliveredCount,
+    failedCount = failedCount,
+    contactsAttempted = contactsAttempted,
+    permissionStatus = permissionStatus,
+    errorReason = errorReason
 )

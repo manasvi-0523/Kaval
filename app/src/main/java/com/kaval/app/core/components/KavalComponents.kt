@@ -225,11 +225,17 @@ fun KavalActivityCard(alert: EmergencyAlert) {
                 Text(alert.type, fontWeight = FontWeight.Bold)
                 Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(alert.timestamp)), color = KavalColors.Muted)
             }
-            if (alert.isDemo) KavalStatusBadge("Demo", KavalColors.Trust)
+            KavalStatusBadge(if (alert.isDemo) "Demo" else "Real", if (alert.isDemo) KavalColors.Trust else KavalColors.Safe)
         }
         Text("Status: ${alert.status}")
         Text("Location: ${alert.locationLabel}")
-        Text("Contacts Notified: ${alert.contactsNotified}")
+        Text("SMS: ${alert.smsStatus.replace('_', ' ')}")
+        if (!alert.isDemo) {
+            Text("Sent: ${alert.sentCount}/${alert.contactsAttempted}")
+            Text("Delivered: ${alert.deliveredCount}")
+            Text("Failed: ${alert.failedCount}")
+        }
+        alert.errorReason?.let { Text("Issue: $it", color = KavalColors.Warning) }
     }
 }
 

@@ -54,7 +54,16 @@ data class EmergencyAlert(
     val status: String,
     val locationLabel: String,
     val contactsNotified: Int,
-    val isDemo: Boolean
+    val isDemo: Boolean,
+    val locationStatus: String = "unavailable",
+    val mapsLink: String? = null,
+    val smsStatus: String = "queued",
+    val sentCount: Int = 0,
+    val deliveredCount: Int = 0,
+    val failedCount: Int = 0,
+    val contactsAttempted: Int = 0,
+    val permissionStatus: String = "unknown",
+    val errorReason: String? = null
 )
 
 data class AppearanceSettings(
