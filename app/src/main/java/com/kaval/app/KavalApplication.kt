@@ -14,7 +14,7 @@ class KavalApplication : Application() {
     val repository by lazy {
         KavalRepository(
             contactDao = database.trustedContactDao(),
-            alertDao = database.emergencyAlertDao(),
+            incidentDao = database.incidentDao(),
             preferences = preferences
         )
     }

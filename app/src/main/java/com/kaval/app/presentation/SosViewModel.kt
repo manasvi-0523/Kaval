@@ -1,0 +1,162 @@
+package com.kaval.app.presentation
+
+import android.app.Application
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Build
+import android.telephony.SmsManager
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.kaval.app.KavalApplication
+import com.kaval.app.data.sms.SmsDeliveryStatusReceiver
+import com.kaval.app.domain.model.EmergencyAlert
+import com.kaval.app.domain.model.LocationStatus
+import com.kaval.app.domain.model.TrustedContact
+import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
+
+class SosViewModel(application: Application) : AndroidViewModel(application) {
+    private val app = application as KavalApplication
+    private val repository = app.repository
+    private val locationTracker = app.locationTracker
+
+    fun trigger(
+        state: KavalUiState,
+        smsPermissionGranted: Boolean,
+        onEmergencyReady: () -> Unit
+    ) = viewModelScope.launch {
+        if (!state.demoMode) locationTracker.refreshLocation()
+
+        val latestLocationState = locationTracker.state.value
+        val location = latestLocationState.location
+        val contacts = state.contacts.filter { it.phoneNumber.any(Char::isDigit) }
+        val permissionStatus = if (state.demoMode) "not_required" else if (smsPermissionGranted) "granted" else "denied"
+        val initialSmsStatus = when {
+            state.demoMode -> "demo_blocked"
+            !smsPermissionGranted -> "permission_denied"
+            contacts.isEmpty() -> "no_trusted_contacts"
+            else -> "queued"
+        }
+        val errorReason = when {
+            !state.demoMode && !smsPermissionGranted -> "SMS permission denied"
+            !state.demoMode && contacts.isEmpty() -> "No valid trusted contacts"
+            else -> null
+        }
+        val locationAttached = location != null && latestLocationState.status != LocationStatus.PERMISSION_NEEDED
+        val incidentId = repository.saveAlert(
+            EmergencyAlert(
+                type = "SOS Alert",
+                timestamp = System.currentTimeMillis(),
+                status = "Active",
+                locationLabel = if (locationAttached) "Location attached" else "Location unavailable",
+                contactsNotified = 0,
+                isDemo = state.demoMode,
+                locationStatus = if (locationAttached) "attached" else "unavailable",
+                mapsLink = location?.mapsLink,
+                smsStatus = initialSmsStatus,
+                contactsAttempted = if (state.demoMode) 0 else contacts.size,
+                permissionStatus = permissionStatus,
+                errorReason = errorReason
+            )
+        )
+
+        if (!state.demoMode && smsPermissionGranted && contacts.isNotEmpty()) {
+            repository.initializeSmsDeliveries(incidentId, contacts)
+            sendMultipartSms(
+                incidentId = incidentId,
+                contacts = contacts,
+                message = buildSosMessage(state, latestLocationState.location)
+            )
+        }
+        onEmergencyReady()
+    }
+
+    private suspend fun sendMultipartSms(
+        incidentId: Long,
+        contacts: List<TrustedContact>,
+        message: String
+    ) {
+        val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            app.getSystemService(SmsManager::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            SmsManager.getDefault()
+        }
+
+        contacts.forEach { contact ->
+            try {
+                val parts = smsManager.divideMessage(message)
+                val sentIntents = ArrayList<PendingIntent>(parts.size)
+                val deliveredIntents = ArrayList<PendingIntent>(parts.size)
+                parts.indices.forEach { partIndex ->
+                    sentIntents += statusPendingIntent(
+                        action = SmsDeliveryStatusReceiver.ACTION_SMS_SENT,
+                        incidentId = incidentId,
+                        contactId = contact.id,
+                        partIndex = partIndex,
+                        partCount = parts.size
+                    )
+                    deliveredIntents += statusPendingIntent(
+                        action = SmsDeliveryStatusReceiver.ACTION_SMS_DELIVERED,
+                        incidentId = incidentId,
+                        contactId = contact.id,
+                        partIndex = partIndex,
+                        partCount = parts.size
+                    )
+                }
+                smsManager.sendMultipartTextMessage(
+                    contact.phoneNumber,
+                    null,
+                    parts,
+                    sentIntents,
+                    deliveredIntents
+                )
+            } catch (_: SecurityException) {
+                repository.updateSmsDelivery(incidentId, contact.id, "failed")
+            } catch (_: RuntimeException) {
+                repository.updateSmsDelivery(incidentId, contact.id, "failed")
+            }
+        }
+    }
+
+    private fun statusPendingIntent(
+        action: String,
+        incidentId: Long,
+        contactId: Long,
+        partIndex: Int,
+        partCount: Int
+    ): PendingIntent {
+        val intent = Intent(app, SmsDeliveryStatusReceiver::class.java).apply {
+            this.action = action
+            putExtra(SmsDeliveryStatusReceiver.EXTRA_INCIDENT_ID, incidentId)
+            putExtra(SmsDeliveryStatusReceiver.EXTRA_CONTACT_ID, contactId)
+            putExtra(SmsDeliveryStatusReceiver.EXTRA_FINAL_PART, partIndex == partCount - 1)
+        }
+        val requestCode = listOf(action, incidentId, contactId, partIndex).hashCode()
+        return PendingIntent.getBroadcast(
+            app,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildSosMessage(
+        state: KavalUiState,
+        location: com.kaval.app.domain.model.KavalLocation?
+    ): String {
+        val locationBlock = location?.let {
+            val coordinates = String.format(Locale.US, "%.6f, %.6f", it.latitude, it.longitude)
+            "Coordinates: $coordinates\nLocation: ${it.mapsLink}"
+        } ?: "Location unavailable - GPS off or no signal"
+
+        return """
+            ${state.profile.name} needs help.
+            $locationBlock
+            Time: ${DateFormat.getDateTimeInstance().format(Date())}
+            Sent via Kaval.
+        """.trimIndent()
+    }
+}

@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -69,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -591,14 +593,14 @@ fun ActivityLogScreen(
                     writer.write(buildSafetyLogCsv(alerts))
                 }
             }.onSuccess {
-                Toast.makeText(context, "Safety Logs exported", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Incident Log exported", Toast.LENGTH_SHORT).show()
             }.onFailure {
-                Toast.makeText(context, "Could not export Safety Logs", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Could not export Incident Log", Toast.LENGTH_LONG).show()
             }
         }
     }
     KavalScreen {
-        item { KavalSectionHeader("Safety Logs", "Verified emergency, location, and SMS outcomes.") }
+        item { KavalSectionHeader("Incident Log", "Per-contact SOS message outcomes and emergency details.") }
         item {
             KavalGlassCard {
                 Text(
@@ -611,7 +613,7 @@ fun ActivityLogScreen(
                 }
                 KavalPrimaryButton(
                     "Export CSV",
-                    { exportLauncher.launch("kaval-safety-logs.csv") },
+                    { exportLauncher.launch("kaval-incident-log.csv") },
                     Modifier.fillMaxWidth()
                 )
             }
@@ -805,7 +807,7 @@ fun ProfileScreen(
                     KavalSectionHeader("Safety tools")
                     SettingRow("Trusted Contacts", "People contacted during SOS", Icons.Default.Person, onContacts)
                     SettingRow("Guardian Settings", "Choose sharing and guardian contacts", Icons.Default.LocationOn, onSettings)
-                    SettingRow("Safety Logs", "SOS location and SMS outcomes", Icons.Default.Warning, onSafetyLogs)
+                    SettingRow("Incident Log", "Per-contact SOS message outcomes", Icons.Default.Warning, onSafetyLogs)
                     SettingRow("Settings", "Demo mode, appearance, and permissions", Icons.Default.Menu, onSettings)
                 }
             }
@@ -1048,6 +1050,21 @@ private fun android.content.Context.kavalVibrator(): Vibrator? {
 @Composable
 fun EmergencyCountdownScreen(onCancel: () -> Unit, onTriggered: () -> Unit) {
     var count by remember { mutableIntStateOf(3) }
+    val context = LocalContext.current
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        @Suppress("DEPRECATION")
+        val wakeLock = context.getSystemService(PowerManager::class.java).newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
+            "Kaval:SosCountdown"
+        ).apply { acquire(10_000L) }
+        view.keepScreenOn = true
+
+        onDispose {
+            if (wakeLock.isHeld) wakeLock.release()
+            view.keepScreenOn = false
+        }
+    }
     LaunchedEffect(Unit) {
         while (count > 0) {
             delay(1000)

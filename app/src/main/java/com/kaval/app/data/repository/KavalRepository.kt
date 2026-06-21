@@ -1,11 +1,11 @@
 package com.kaval.app.data.repository
 
 import com.kaval.app.data.datastore.KavalPreferences
-import com.kaval.app.data.local.dao.EmergencyAlertDao
+import com.kaval.app.data.local.dao.IncidentDao
 import com.kaval.app.data.local.dao.TrustedContactDao
 import com.kaval.app.data.local.entities.toDomain
 import com.kaval.app.data.local.entities.toEntity
-import com.kaval.app.data.local.entities.SmsDeliveryEntity
+import com.kaval.app.data.local.entities.IncidentContactStatusEntity
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.TrustedContact
@@ -14,11 +14,11 @@ import kotlinx.coroutines.flow.map
 
 class KavalRepository(
     private val contactDao: TrustedContactDao,
-    private val alertDao: EmergencyAlertDao,
+    private val incidentDao: IncidentDao,
     private val preferences: KavalPreferences
 ) {
     val contacts = contactDao.observeContacts().map { items -> items.map { it.toDomain() } }
-    val alerts = alertDao.observeAlerts().map { items -> items.map { it.toDomain() } }
+    val alerts = incidentDao.observeIncidents().map { items -> items.map { it.toDomain() } }
     val demoMode = preferences.demoMode
     val logRetentionDays = preferences.logRetentionDays
     val profile = preferences.profile
@@ -36,26 +36,30 @@ class KavalRepository(
 
     suspend fun deleteContact(contact: TrustedContact) = contactDao.delete(contact.toEntity())
 
-    suspend fun saveAlert(alert: EmergencyAlert): Long = alertDao.insert(alert.toEntity())
+    suspend fun saveAlert(alert: EmergencyAlert): Long = incidentDao.insert(alert.toEntity())
 
     suspend fun initializeSmsDeliveries(alertId: Long, contacts: List<TrustedContact>) {
-        alertDao.insertDeliveries(
+        incidentDao.insertContactStatuses(
             contacts.map { contact ->
-                SmsDeliveryEntity(alertId, contact.id, contact.name)
+                IncidentContactStatusEntity(
+                    incidentId = alertId,
+                    contactId = contact.id,
+                    contactName = contact.name,
+                    phoneNumber = contact.phoneNumber
+                )
             }
         )
     }
 
     suspend fun updateSmsDelivery(alertId: Long, contactId: Long, status: String) {
-        alertDao.updateDelivery(alertId, contactId, status, System.currentTimeMillis())
-        alertDao.refreshDeliverySummary(alertId)
+        incidentDao.updateContactAndSummary(alertId, contactId, status)
     }
 
     suspend fun setDemoMode(enabled: Boolean) = preferences.setDemoMode(enabled)
 
     suspend fun setLogRetentionDays(days: Int) = preferences.setLogRetentionDays(days)
 
-    suspend fun deleteOldCompletedLogs(cutoff: Long) = alertDao.deleteOldCompletedLogs(cutoff)
+    suspend fun deleteOldCompletedLogs(cutoff: Long) = incidentDao.deleteOldCompletedLogs(cutoff)
 
     suspend fun saveProfile(profile: UserProfile) = preferences.saveProfile(profile)
 

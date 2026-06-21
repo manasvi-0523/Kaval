@@ -63,7 +63,16 @@ data class EmergencyAlert(
     val failedCount: Int = 0,
     val contactsAttempted: Int = 0,
     val permissionStatus: String = "unknown",
-    val errorReason: String? = null
+    val errorReason: String? = null,
+    val contactStatuses: List<SmsContactStatus> = emptyList()
+)
+
+data class SmsContactStatus(
+    val contactId: Long,
+    val contactName: String,
+    val phoneNumber: String,
+    val status: String,
+    val updatedAt: Long
 )
 
 data class AppearanceSettings(

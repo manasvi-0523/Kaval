@@ -12,10 +12,10 @@ import kotlinx.coroutines.launch
 
 class SmsDeliveryStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val alertId = intent.getLongExtra(EXTRA_ALERT_ID, -1L)
+        val incidentId = intent.getLongExtra(EXTRA_INCIDENT_ID, -1L)
         val contactId = intent.getLongExtra(EXTRA_CONTACT_ID, -1L)
         val isFinalPart = intent.getBooleanExtra(EXTRA_FINAL_PART, false)
-        if (alertId < 0 || contactId < 0) return
+        if (incidentId < 0 || contactId < 0) return
 
         if (!isFinalPart && resultCode == Activity.RESULT_OK) return
 
@@ -28,7 +28,7 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
         val repository = (context.applicationContext as KavalApplication).repository
         receiverScope.launch {
             try {
-                repository.updateSmsDelivery(alertId, contactId, status)
+                repository.updateSmsDelivery(incidentId, contactId, status)
             } finally {
                 pendingResult.finish()
             }
@@ -38,7 +38,7 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_SMS_SENT = "com.kaval.app.SMS_SENT"
         const val ACTION_SMS_DELIVERED = "com.kaval.app.SMS_DELIVERED"
-        const val EXTRA_ALERT_ID = "alert_id"
+        const val EXTRA_INCIDENT_ID = "incident_id"
         const val EXTRA_CONTACT_ID = "contact_id"
         const val EXTRA_FINAL_PART = "final_part"
 

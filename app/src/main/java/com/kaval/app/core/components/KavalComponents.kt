@@ -43,11 +43,13 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -219,6 +221,8 @@ fun KavalContactCard(contact: TrustedContact, onEdit: () -> Unit, onDelete: () -
 
 @Composable
 fun KavalActivityCard(alert: EmergencyAlert) {
+    var contactsExpanded by remember(alert.id) { mutableStateOf(false) }
+
     KavalGlassCard {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Warning, contentDescription = null, tint = KavalColors.Emergency)
@@ -237,6 +241,31 @@ fun KavalActivityCard(alert: EmergencyAlert) {
             Text("Failed: ${alert.failedCount}")
         }
         alert.errorReason?.let { Text("Issue: $it", color = KavalColors.Warning) }
+        if (alert.contactStatuses.isNotEmpty()) {
+            TextButton(onClick = { contactsExpanded = !contactsExpanded }) {
+                Text(if (contactsExpanded) "Hide contact results" else "Show contact results")
+            }
+            if (contactsExpanded) {
+                alert.contactStatuses.forEach { contact ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(contact.contactName, fontWeight = FontWeight.Bold)
+                            Text(contact.phoneNumber, color = KavalColors.Muted)
+                        }
+                        val statusColor = when (contact.status) {
+                            "sent", "delivered" -> KavalColors.Safe
+                            "failed", "permission_denied" -> KavalColors.Warning
+                            else -> KavalColors.Trust
+                        }
+                        KavalStatusBadge(contact.status.replace('_', ' '), statusColor)
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -114,47 +114,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         repository.deleteContact(contact)
     }
 
-    fun prepareEmergency(
-        isDemo: Boolean,
-        smsStatus: String,
-        permissionStatus: String,
-        errorReason: String? = null,
-        refreshLocation: Boolean = false,
-        onCreated: (Long, KavalUiState, List<TrustedContact>) -> Unit
-    ) = viewModelScope.launch {
-        if (refreshLocation) locationTracker.refreshLocation()
-        val state = uiState.value
-        val validContacts = state.contacts.filter { it.phoneNumber.any(Char::isDigit) }
-        val location = state.locationState.location
-        val locationAttached = location != null && state.locationState.status != LocationStatus.PERMISSION_NEEDED
-        val effectiveSmsStatus = if (!isDemo && validContacts.isEmpty()) "no_trusted_contacts" else smsStatus
-        val effectiveError = errorReason ?: if (!isDemo && validContacts.isEmpty()) "No valid trusted contacts" else null
-        val alertId = repository.saveAlert(
-            EmergencyAlert(
-                type = "SOS Alert",
-                timestamp = System.currentTimeMillis(),
-                status = "Active",
-                locationLabel = if (locationAttached) "Location attached" else "Location unavailable",
-                contactsNotified = 0,
-                isDemo = isDemo,
-                locationStatus = if (locationAttached) "attached" else "unavailable",
-                mapsLink = location?.mapsLink,
-                smsStatus = effectiveSmsStatus,
-                contactsAttempted = if (isDemo) 0 else validContacts.size,
-                permissionStatus = permissionStatus,
-                errorReason = effectiveError
-            )
-        )
-        if (!isDemo && validContacts.isNotEmpty()) {
-            repository.initializeSmsDeliveries(alertId, validContacts)
-        }
-        onCreated(alertId, uiState.value, validContacts)
-    }
-
-    fun markSmsFailed(alertId: Long, contactId: Long) = viewModelScope.launch {
-        repository.updateSmsDelivery(alertId, contactId, "failed")
-    }
-
     fun stopEmergency() = viewModelScope.launch {
         val state = uiState.value
         val location = state.locationState.location
