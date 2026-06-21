@@ -3,6 +3,7 @@ package com.kaval.app.presentation.screens
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -10,8 +11,11 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -88,6 +92,8 @@ import com.kaval.app.domain.model.TrustedContact
 import com.kaval.app.domain.model.UserProfile
 import com.kaval.app.presentation.KavalUiState
 import kotlinx.coroutines.delay
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -131,12 +137,15 @@ fun HomeScreen(
                     Text("Personal safety companion", color = KavalColors.Muted)
                 }
                 Spacer(Modifier.weight(1f))
-                if (state.demoMode) KavalStatusBadge("Demo Mode", KavalColors.Trust)
+                if (state.demoMode) KavalStatusBadge("DEMO", KavalColors.Trust)
             }
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader(state.safetyStatus.status, "Risk level: ${state.safetyStatus.riskLevel}")
+                KavalSectionHeader(
+                    if (state.safetyStatus.locationSharingActive) "Emergency mode active" else "Safety tools ready",
+                    if (state.safetyStatus.locationSharingActive) "Kaval is tracking the active SOS state." else "Check readiness before you travel."
+                )
                 KavalStatusBadge(
                     text = if (state.safetyStatus.locationSharingActive) "Location Sharing ON" else "Location Sharing OFF",
                     color = if (state.safetyStatus.locationSharingActive) KavalColors.Safe else KavalColors.Muted
@@ -165,14 +174,14 @@ fun HomeScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Guardian monitoring", fontWeight = FontWeight.Bold)
-                        Text(if (state.guardianModeActive) "Live state: ON" else "Live state: OFF", color = KavalColors.Muted)
+                        Text(if (state.guardianModeActive) "In-app session: ON" else "In-app session: OFF", color = KavalColors.Muted)
                     }
                     Switch(state.guardianModeActive, onGuardianModeChange)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Passive Safety Mode", fontWeight = FontWeight.Bold)
-                        Text(if (state.passiveSafetyActive) "Monitoring quietly in background" else "Manual safety only", color = KavalColors.Muted)
+                        Text(if (state.passiveSafetyActive) "Visible monitoring state enabled" else "Manual safety only", color = KavalColors.Muted)
                     }
                     Switch(state.passiveSafetyActive, onPassiveSafetyChange)
                 }
@@ -222,8 +231,12 @@ fun HomeScreen(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuickAction("Fake Call", Icons.Default.Call, Modifier.weight(1f), onFakeCall)
-                QuickAction("Share Location", Icons.Default.LocationOn, Modifier.weight(1f)) {
-                    Toast.makeText(context, "Demo location ready to share", Toast.LENGTH_SHORT).show()
+                QuickAction("GPS Status", Icons.Default.LocationOn, Modifier.weight(1f)) {
+                    Toast.makeText(
+                        context,
+                        if (state.locationState.location != null) "Live location is ready" else "Refresh GPS before sharing",
+                        Toast.LENGTH_SHORT
+                    ).show()
                     onShareLocation()
                 }
             }
@@ -242,10 +255,10 @@ fun HomeScreen(
                         {
                             val shareText = """
                                 Kaval safety update:
-                                I am sharing my demo safety status.
+                                I am sharing my current safety status.
 
                                 Location:
-                                https://maps.google.com/?q=Demo+Location
+                                ${state.locationState.location?.mapsLink ?: "Location unavailable. Please call me if needed."}
 
                                 Sent via Kaval.
                             """.trimIndent()
@@ -269,10 +282,10 @@ fun HomeScreen(
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader("Permissions for real mode")
-                Text("Location permission will be required for real live location sharing.")
-                Text("Notification permission will be required for real emergency alerts.")
-                Text("Contacts permission is optional and not used in this MVP.")
+                KavalSectionHeader("Safety permissions")
+                Text("Location: ${state.locationState.readinessLabel()}")
+                Text("SMS: ${if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) "Ready" else "Permission needed"}")
+                Text("Kaval does not request contacts or background-location access.")
             }
         }
     }
@@ -281,23 +294,38 @@ fun HomeScreen(
 @Composable
 fun MapScreen(
     state: KavalUiState,
+    onBack: () -> Unit,
     onRequestLocationPermission: () -> Unit,
     onRefreshLocation: () -> Unit
 ) {
+    val context = LocalContext.current
     val locationState = state.locationState
     KavalScreen {
         item {
-            KavalSectionHeader("Safety Map", "Real device location without stored movement history.")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Column {
+                    Text("GPS Status", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Supports SOS, Journey, and Guardian Mode", color = KavalColors.Muted)
+                }
+            }
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader(locationState.status.displayLabel())
+                KavalStatusBadge(
+                    locationState.status.displayLabel(),
+                    locationState.status.statusColor()
+                )
                 Text(locationState.message, color = KavalColors.Muted)
                 locationState.location?.let { location ->
                     location.accuracyMeters?.let { accuracy ->
-                        Text("Accuracy: ${accuracy.toInt()} m")
+                        Text("Accuracy", color = KavalColors.Muted)
+                        Text("Approximately ${accuracy.toInt()} metres", fontWeight = FontWeight.Bold)
                     }
-                    Text("Updated: ${formatLocationAge(location.timestampMillis)}")
+                    Text("Last updated", color = KavalColors.Muted)
+                    Text(formatLocationAge(location.timestampMillis), fontWeight = FontWeight.Bold)
                     Text(
                         if (locationState.permissionLevel == LocationPermissionLevel.PRECISE) {
                             "Precise location permission active"
@@ -314,39 +342,53 @@ fun MapScreen(
                         Modifier.fillMaxWidth()
                     )
                 } else {
-                    KavalSecondaryButton(
-                        "Refresh Location",
-                        onRefreshLocation,
-                        Modifier.fillMaxWidth()
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        KavalSecondaryButton("Refresh", onRefreshLocation, Modifier.weight(1f))
+                        if (locationState.location != null) {
+                            KavalPrimaryButton(
+                                "Open in Maps",
+                                { openInGoogleMaps(context, locationState.location.mapsLink) },
+                                Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    if (locationState.status == LocationStatus.UNAVAILABLE) {
+                        KavalSecondaryButton(
+                            "Open Location Settings",
+                            { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
+                            Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader("Location preview")
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
-                        .padding(16.dp)
-                ) {
-                    KavalStatusBadge(
-                        locationState.status.displayLabel(),
-                        when (locationState.status) {
-                            LocationStatus.LIVE -> KavalColors.Safe
-                            LocationStatus.APPROXIMATE, LocationStatus.STALE -> KavalColors.Warning
-                            LocationStatus.PERMISSION_NEEDED, LocationStatus.UNAVAILABLE -> KavalColors.Emergency
-                            LocationStatus.WAITING_FOR_GPS -> KavalColors.Trust
-                        },
-                        Modifier.align(Alignment.Center)
-                    )
-                }
-                Text("The interactive Google Map is scheduled for Phase 4. Phase 1 verifies the phone's real GPS state.")
+                KavalSectionHeader("Emergency location link")
+                Text(
+                    if (locationState.location != null) {
+                        "Ready to attach to SOS SMS and safety updates."
+                    } else {
+                        "No location link is available yet. SOS will still open and explain that location is unavailable."
+                    }
+                )
+                Text("Kaval keeps only the latest location in memory. It does not store continuous movement history.", color = KavalColors.Muted)
             }
         }
     }
+}
+
+private fun LocationStatus.statusColor(): Color {
+    return when (this) {
+        LocationStatus.LIVE -> KavalColors.Safe
+        LocationStatus.APPROXIMATE, LocationStatus.STALE -> KavalColors.Warning
+        LocationStatus.PERMISSION_NEEDED, LocationStatus.UNAVAILABLE -> KavalColors.Emergency
+        LocationStatus.WAITING_FOR_GPS -> KavalColors.Trust
+    }
+}
+
+private fun openInGoogleMaps(context: android.content.Context, mapsLink: String) {
+    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(mapsLink)))
 }
 
 private fun com.kaval.app.domain.model.KavalLocationState.readinessLabel(): String {
@@ -471,13 +513,139 @@ private fun ContactDialog(initial: TrustedContact?, onDismiss: () -> Unit, onSav
 }
 
 @Composable
-fun ActivityLogScreen(alerts: List<EmergencyAlert>) {
+fun ActivityLogScreen(
+    alerts: List<EmergencyAlert>,
+    retentionDays: Int,
+    onRetentionChange: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                    writer.write(buildSafetyLogCsv(alerts))
+                }
+            }.onSuccess {
+                Toast.makeText(context, "Safety Logs exported", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(context, "Could not export Safety Logs", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     KavalScreen {
         item { KavalSectionHeader("Safety Logs", "Verified emergency, location, and SMS outcomes.") }
+        item {
+            KavalGlassCard {
+                Text(
+                    "Logs older than ${if (retentionDays == 90) "3 months" else "4 weeks"} are automatically cleared for your privacy.",
+                    fontWeight = FontWeight.Bold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    KavalSecondaryButton("4 weeks", { onRetentionChange(28) }, Modifier.weight(1f))
+                    KavalSecondaryButton("3 months", { onRetentionChange(90) }, Modifier.weight(1f))
+                }
+                KavalPrimaryButton(
+                    "Export CSV",
+                    { exportLauncher.launch("kaval-safety-logs.csv") },
+                    Modifier.fillMaxWidth()
+                )
+            }
+        }
         if (alerts.isEmpty()) {
             item { EmptyState("No emergency activity yet.") }
         } else {
             items(alerts, key = { it.id }) { alert -> KavalActivityCard(alert) }
+        }
+    }
+}
+
+private fun buildSafetyLogCsv(alerts: List<EmergencyAlert>): String {
+    val header = "time,type,mode,status,location_status,maps_link,sms_status,sent,delivered,failed,contacts_attempted,error"
+    val rows = alerts.map { alert ->
+        listOf(
+            DateFormat.getDateTimeInstance().format(Date(alert.timestamp)),
+            alert.type,
+            if (alert.isDemo) "Demo" else "Real",
+            alert.status,
+            alert.locationStatus,
+            alert.mapsLink.orEmpty(),
+            alert.smsStatus,
+            alert.sentCount,
+            alert.deliveredCount,
+            alert.failedCount,
+            alert.contactsAttempted,
+            alert.errorReason.orEmpty()
+        ).joinToString(",") { csvEscape(it.toString()) }
+    }
+    return (listOf(header) + rows).joinToString("\n")
+}
+
+private fun csvEscape(value: String): String = "\"${value.replace("\"", "\"\"")}\""
+
+@Composable
+fun HelplineScreen(contacts: List<TrustedContact>) {
+    val context = LocalContext.current
+    val nationalHelplines = listOf(
+        Triple("112", "Unified emergency response", "Police, fire, rescue, and health services"),
+        Triple("100", "Police", "Crime, threat, theft, or immediate police assistance"),
+        Triple("101", "Fire", "Fire, gas leak, explosion, or rescue"),
+        Triple("102", "National Ambulance Service", "Ambulance and maternal or child health transport"),
+        Triple("108", "Emergency ambulance", "Medical emergency service; availability varies by state"),
+        Triple("181", "Women Helpline", "Support for women in distress"),
+        Triple("1091", "Harassment calls", "Anti-obscene or threatening calls"),
+        Triple("1098", "Child Helpline", "Children in distress or at risk"),
+        Triple("1930", "Cyber Crime", "Online financial fraud, scams, or digital threats"),
+        Triple("1070", "Disaster relief", "Natural calamities and disaster assistance"),
+        Triple("139", "Railway assistance", "Railway security and medical assistance"),
+        Triple("14416", "Tele-MANAS", "Mental health support and counselling")
+    )
+    KavalScreen {
+        item { KavalSectionHeader("Helplines", "National services. Kaval opens the dialer so you stay in control.") }
+        item {
+            KavalGlassCard {
+                KavalStatusBadge("Emergency", KavalColors.Emergency)
+                Text("112 Unified Emergency Response", fontWeight = FontWeight.Bold)
+                Text("Use this first for immediate police, fire, rescue, or medical help.", color = KavalColors.Muted)
+                KavalPrimaryButton(
+                    "Dial 112",
+                    { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112"))) },
+                    Modifier.fillMaxWidth(),
+                    emergency = true
+                )
+            }
+        }
+        item { KavalSectionHeader("National services") }
+        items(nationalHelplines, key = { it.first }) { helpline ->
+            KavalGlassCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    KavalStatusBadge(helpline.first, if (helpline.first == "112") KavalColors.Emergency else KavalColors.Trust)
+                    Column(Modifier.weight(1f)) {
+                        Text(helpline.second, fontWeight = FontWeight.Bold)
+                        Text(helpline.third, color = KavalColors.Muted)
+                    }
+                    IconButton(onClick = { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${helpline.first}"))) }) {
+                        Icon(Icons.Default.Call, contentDescription = "Dial ${helpline.first}")
+                    }
+                }
+            }
+        }
+        item { KavalSectionHeader("Trusted contacts") }
+        if (contacts.isEmpty()) {
+            item { EmptyState("Add a trusted contact from Profile before you need one.") }
+        } else {
+            items(contacts, key = { it.id }) { contact ->
+                KavalGlassCard {
+                    Text(contact.name, fontWeight = FontWeight.Bold)
+                    Text(contact.relationship, color = KavalColors.Muted)
+                    KavalSecondaryButton(
+                        "Open Dialer",
+                        { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(contact.phoneNumber)}"))) },
+                        Modifier.fillMaxWidth()
+                    )
+                }
+            }
         }
     }
 }
@@ -520,7 +688,7 @@ fun SettingsScreen(
         item {
             KavalGlassCard {
                 KavalSectionHeader("About Kaval")
-                Text("Kaval is a personal safety companion MVP focused on reliable emergency interaction before real services are added.")
+                Text("Kaval is a personal safety companion using on-device GPS, offline SMS, and trusted-contact safety tools.")
             }
         }
     }
@@ -546,7 +714,14 @@ private fun SettingRow(title: String, subtitle: String, icon: androidx.compose.u
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(profile: UserProfile, onSave: (UserProfile) -> Unit, onBack: () -> Unit) {
+fun ProfileScreen(
+    profile: UserProfile,
+    onSave: (UserProfile) -> Unit,
+    onBack: () -> Unit,
+    onContacts: () -> Unit,
+    onSafetyLogs: () -> Unit,
+    onSettings: () -> Unit
+) {
     var name by remember(profile) { mutableStateOf(profile.name) }
     var phone by remember(profile) { mutableStateOf(profile.phoneNumber) }
     var note by remember(profile) { mutableStateOf(profile.emergencyNote) }
@@ -562,6 +737,16 @@ fun ProfileScreen(profile: UserProfile, onSave: (UserProfile) -> Unit, onBack: (
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                KavalGlassCard {
+                    KavalSectionHeader("Safety tools")
+                    SettingRow("Trusted Contacts", "People contacted during SOS", Icons.Default.Person, onContacts)
+                    SettingRow("Guardian Settings", "Choose sharing and guardian contacts", Icons.Default.LocationOn, onSettings)
+                    SettingRow("Safety Logs", "SOS location and SMS outcomes", Icons.Default.Warning, onSafetyLogs)
+                    SettingRow("Settings", "Demo mode, appearance, and permissions", Icons.Default.Menu, onSettings)
+                }
+            }
+            item { KavalSectionHeader("Personal information", "Used in emergency messages and your safety profile.") }
             item { OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth()) }
             item { OutlinedTextField(phone, { phone = it }, label = { Text("Phone number") }, modifier = Modifier.fillMaxWidth()) }
             item { OutlinedTextField(note, { note = it }, label = { Text("Emergency note") }, modifier = Modifier.fillMaxWidth(), minLines = 3) }

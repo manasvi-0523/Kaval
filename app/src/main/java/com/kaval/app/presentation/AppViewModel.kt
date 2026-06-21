@@ -27,6 +27,7 @@ data class KavalUiState(
     val safetyStatus: SafetyStatus = SafetyStatus(),
     val emergencyMessage: String = "",
     val locationState: KavalLocationState = KavalLocationState(),
+    val logRetentionDays: Int = 28,
     val guardianModeActive: Boolean = false,
     val passiveSafetyActive: Boolean = false,
     val journeyActive: Boolean = false,
@@ -48,13 +49,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val locationTracker = kavalApplication.locationTracker
     private val safetyModes = MutableStateFlow(SafetyModes())
 
+    private val appearanceAndRetention = combine(
+        repository.appearance,
+        repository.logRetentionDays
+    ) { appearance, retentionDays -> appearance to retentionDays }
+
     private val persistedState = combine(
         repository.contacts,
         repository.alerts,
         repository.demoMode,
         repository.profile,
-        repository.appearance
-    ) { contacts, alerts, demoMode, profile, appearance ->
+        appearanceAndRetention
+    ) { contacts, alerts, demoMode, profile, settings ->
+        val (appearance, retentionDays) = settings
         val locationSharing = alerts.firstOrNull()?.status == "Active"
         KavalUiState(
             contacts = contacts,
@@ -62,6 +69,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             demoMode = demoMode,
             profile = profile,
             appearance = appearance,
+            logRetentionDays = retentionDays,
             safetyStatus = SafetyStatus(
                 status = if (locationSharing) "Emergency mode active" else "You are currently safe",
                 locationSharingActive = locationSharing,
@@ -163,6 +171,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDemoMode(enabled: Boolean) = viewModelScope.launch {
         repository.setDemoMode(enabled)
+    }
+
+    fun setLogRetentionDays(days: Int) = viewModelScope.launch {
+        repository.setLogRetentionDays(days)
     }
 
     fun saveProfile(profile: UserProfile) = viewModelScope.launch {

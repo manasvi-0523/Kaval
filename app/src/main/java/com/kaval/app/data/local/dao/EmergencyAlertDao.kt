@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.kaval.app.data.local.entities.EmergencyAlertEntity
 import com.kaval.app.data.local.entities.SmsDeliveryEntity
 import kotlinx.coroutines.flow.Flow
@@ -37,4 +38,16 @@ interface EmergencyAlertDao {
         WHERE id = :alertId
     """)
     suspend fun refreshDeliverySummary(alertId: Long)
+
+    @Query("DELETE FROM sms_deliveries WHERE alertId IN (SELECT id FROM emergency_alerts WHERE timestamp < :cutoff AND status != 'Active')")
+    suspend fun deleteDeliveryDetailsBefore(cutoff: Long)
+
+    @Query("DELETE FROM emergency_alerts WHERE timestamp < :cutoff AND status != 'Active'")
+    suspend fun deleteCompletedAlertsBefore(cutoff: Long)
+
+    @Transaction
+    suspend fun deleteOldCompletedLogs(cutoff: Long) {
+        deleteDeliveryDetailsBefore(cutoff)
+        deleteCompletedAlertsBefore(cutoff)
+    }
 }

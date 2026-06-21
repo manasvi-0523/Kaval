@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContactPhone
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -254,9 +255,8 @@ fun KavalRiskCard(title: String, description: String, color: Color, icon: ImageV
 
 val BottomNavItems = listOf(
     KavalNavItem("home", "Home", Icons.Default.Home),
-    KavalNavItem("map", "Map", Icons.Default.Map),
-    KavalNavItem("contacts", "Contacts", Icons.Default.ContactPhone),
-    KavalNavItem("activity", "Activity", Icons.Default.Warning)
+    KavalNavItem("helpline", "Helpline", Icons.Default.Call),
+    KavalNavItem("profile", "Profile", Icons.Default.Person)
 )
 
 @Composable

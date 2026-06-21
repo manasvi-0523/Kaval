@@ -60,6 +60,14 @@ C:\Users\Lenovo\AppData\Local\Android\Sdk
 
 `local.properties` points to this SDK path and is intentionally ignored by Git.
 
+Android Platform Tools was added to the current Windows user's `PATH` on June 20, 2026:
+
+```text
+C:\Users\Lenovo\AppData\Local\Android\Sdk\platform-tools
+```
+
+New terminal windows can run `adb` directly. Existing terminal windows must be reopened or have the path added to their current session.
+
 ## Android SDK Packages Installed/Present
 
 Observed installed packages:
@@ -185,6 +193,18 @@ Purpose:
 - Coroutine support for safely awaiting Google Play services location tasks.
 
 These artifacts are stored in the normal Gradle cache; no separate executable or global program was installed.
+
+## Safety Log Maintenance Dependency
+
+Added through Gradle on June 21, 2026:
+
+```text
+androidx.work:work-runtime-ktx:2.9.1
+```
+
+Purpose:
+
+- Schedule weekly privacy cleanup for completed Safety Logs while retaining active emergency records.
 
 ## Diagnostic Logs
 

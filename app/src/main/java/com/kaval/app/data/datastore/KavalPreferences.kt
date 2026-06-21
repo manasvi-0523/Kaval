@@ -3,6 +3,7 @@ package com.kaval.app.data.datastore
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kaval.app.domain.model.AppearanceSettings
@@ -14,6 +15,7 @@ private val Context.kavalDataStore by preferencesDataStore("kaval_preferences")
 
 class KavalPreferences(private val context: Context) {
     val demoMode: Flow<Boolean> = context.kavalDataStore.data.map { it[Keys.demoMode] ?: true }
+    val logRetentionDays: Flow<Int> = context.kavalDataStore.data.map { it[Keys.logRetentionDays] ?: 28 }
 
     val profile: Flow<UserProfile> = context.kavalDataStore.data.map {
         UserProfile(
@@ -41,6 +43,10 @@ class KavalPreferences(private val context: Context) {
         context.kavalDataStore.edit { it[Keys.demoMode] = enabled }
     }
 
+    suspend fun setLogRetentionDays(days: Int) {
+        context.kavalDataStore.edit { it[Keys.logRetentionDays] = if (days == 90) 90 else 28 }
+    }
+
     suspend fun saveProfile(profile: UserProfile) {
         context.kavalDataStore.edit {
             it[Keys.name] = profile.name
@@ -64,6 +70,7 @@ class KavalPreferences(private val context: Context) {
 
     private object Keys {
         val demoMode = booleanPreferencesKey("demo_mode")
+        val logRetentionDays = intPreferencesKey("log_retention_days")
         val name = stringPreferencesKey("profile_name")
         val phone = stringPreferencesKey("profile_phone")
         val emergencyNote = stringPreferencesKey("profile_emergency_note")

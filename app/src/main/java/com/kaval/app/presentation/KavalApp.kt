@@ -40,6 +40,7 @@ import com.kaval.app.presentation.screens.EmergencyCountdownScreen
 import com.kaval.app.presentation.screens.EmergencyModeScreen
 import com.kaval.app.presentation.screens.FakeCallScreen
 import com.kaval.app.presentation.screens.HomeScreen
+import com.kaval.app.presentation.screens.HelplineScreen
 import com.kaval.app.presentation.screens.MapScreen
 import com.kaval.app.presentation.screens.ProfileScreen
 import com.kaval.app.presentation.screens.SettingsScreen
@@ -171,6 +172,7 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                 composable(KavalRoutes.Map) {
                     MapScreen(
                         state = state,
+                        onBack = { navController.popBackStack() },
                         onRequestLocationPermission = {
                             locationPermissionLauncher.launch(
                                 arrayOf(
@@ -182,6 +184,9 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                         onRefreshLocation = viewModel::refreshLocation
                     )
                 }
+                composable(KavalRoutes.Helpline) {
+                    HelplineScreen(state.contacts)
+                }
                 composable(KavalRoutes.Contacts) {
                     ContactsScreen(
                         contacts = state.contacts,
@@ -189,7 +194,13 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                         onDelete = viewModel::deleteContact
                     )
                 }
-                composable(KavalRoutes.Activity) { ActivityLogScreen(state.alerts) }
+                composable(KavalRoutes.Activity) {
+                    ActivityLogScreen(
+                        alerts = state.alerts,
+                        retentionDays = state.logRetentionDays,
+                        onRetentionChange = viewModel::setLogRetentionDays
+                    )
+                }
                 composable(KavalRoutes.Settings) {
                     SettingsScreen(
                         state = state,
@@ -200,7 +211,14 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                     )
                 }
                 composable(KavalRoutes.Profile) {
-                    ProfileScreen(profile = state.profile, onSave = viewModel::saveProfile, onBack = { navController.popBackStack() })
+                    ProfileScreen(
+                        profile = state.profile,
+                        onSave = viewModel::saveProfile,
+                        onBack = { navController.popBackStack() },
+                        onContacts = { navController.navigate(KavalRoutes.Contacts) },
+                        onSafetyLogs = { navController.navigate(KavalRoutes.Activity) },
+                        onSettings = { navController.navigate(KavalRoutes.Settings) }
+                    )
                 }
                 composable(KavalRoutes.Appearance) {
                     AppearanceScreen(settings = state.appearance, onSave = viewModel::saveAppearance, onBack = { navController.popBackStack() })

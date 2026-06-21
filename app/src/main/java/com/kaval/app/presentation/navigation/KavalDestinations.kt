@@ -3,6 +3,7 @@ package com.kaval.app.presentation.navigation
 object KavalRoutes {
     const val Home = "home"
     const val Map = "map"
+    const val Helpline = "helpline"
     const val Contacts = "contacts"
     const val Activity = "activity"
     const val Settings = "settings"

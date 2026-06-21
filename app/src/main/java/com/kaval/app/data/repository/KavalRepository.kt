@@ -20,6 +20,7 @@ class KavalRepository(
     val contacts = contactDao.observeContacts().map { items -> items.map { it.toDomain() } }
     val alerts = alertDao.observeAlerts().map { items -> items.map { it.toDomain() } }
     val demoMode = preferences.demoMode
+    val logRetentionDays = preferences.logRetentionDays
     val profile = preferences.profile
     val appearance = preferences.appearance
 
@@ -51,6 +52,10 @@ class KavalRepository(
     }
 
     suspend fun setDemoMode(enabled: Boolean) = preferences.setDemoMode(enabled)
+
+    suspend fun setLogRetentionDays(days: Int) = preferences.setLogRetentionDays(days)
+
+    suspend fun deleteOldCompletedLogs(cutoff: Long) = alertDao.deleteOldCompletedLogs(cutoff)
 
     suspend fun saveProfile(profile: UserProfile) = preferences.saveProfile(profile)
 

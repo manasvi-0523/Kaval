@@ -4,6 +4,7 @@ import android.app.Application
 import com.kaval.app.data.datastore.KavalPreferences
 import com.kaval.app.data.local.database.KavalDatabase
 import com.kaval.app.data.location.LocationTracker
+import com.kaval.app.data.maintenance.LogCleanupScheduler
 import com.kaval.app.data.repository.KavalRepository
 
 class KavalApplication : Application() {
@@ -16,5 +17,10 @@ class KavalApplication : Application() {
             alertDao = database.emergencyAlertDao(),
             preferences = preferences
         )
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        LogCleanupScheduler.schedule(this)
     }
 }
