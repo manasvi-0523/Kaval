@@ -12,6 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,9 +44,11 @@ import com.kaval.app.presentation.screens.FakeCallScreen
 import com.kaval.app.presentation.screens.HomeScreen
 import com.kaval.app.presentation.screens.HelplineScreen
 import com.kaval.app.presentation.screens.MapScreen
+import com.kaval.app.presentation.screens.PermissionExplanationContent
 import com.kaval.app.presentation.screens.ProfileScreen
 import com.kaval.app.presentation.screens.SettingsScreen
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KavalApp(viewModel: AppViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,20 +58,53 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
     val currentRoute = backStackEntry?.destination?.route
     val bottomRoutes = BottomNavItems.map { it.route }.toSet()
     var pendingEmergencyAfterPermission by remember { mutableStateOf(false) }
+    var showCoarseLocationExplanation by remember { mutableStateOf(false) }
+    var showFineLocationExplanation by remember { mutableStateOf(false) }
+    var locationPermissionDenied by remember { mutableStateOf(false) }
+    var locationExplanationOffered by remember { mutableStateOf(false) }
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
+    val fineLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
         viewModel.refreshLocationPermission()
-        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        ) {
+        locationPermissionDenied = false
+        if (granted || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             viewModel.refreshLocation()
         }
     }
 
+    val coarseLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        viewModel.refreshLocationPermission()
+        locationPermissionDenied = !granted
+        if (granted) showFineLocationExplanation = true
+    }
+
     LaunchedEffect(Unit) {
         viewModel.refreshLocation()
+    }
+
+    LaunchedEffect(currentRoute, state.locationState.permissionLevel) {
+        if (currentRoute == KavalRoutes.Map &&
+            state.locationState.permissionLevel == com.kaval.app.domain.model.LocationPermissionLevel.NONE &&
+            !locationExplanationOffered
+        ) {
+            locationExplanationOffered = true
+            showCoarseLocationExplanation = true
+        }
+    }
+
+    fun beginLocationPermissionFlow() {
+        when {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED -> {
+                showCoarseLocationExplanation = true
+            }
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED -> {
+                showFineLocationExplanation = true
+            }
+            else -> viewModel.refreshLocation()
+        }
     }
 
     fun enterEmergencyMode() {
@@ -173,14 +210,8 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                     MapScreen(
                         state = state,
                         onBack = { navController.popBackStack() },
-                        onRequestLocationPermission = {
-                            locationPermissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                            )
-                        },
+                        locationAccessDenied = locationPermissionDenied,
+                        onRequestLocationPermission = { beginLocationPermissionFlow() },
                         onRefreshLocation = viewModel::refreshLocation
                     )
                 }
@@ -242,6 +273,37 @@ fun KavalApp(viewModel: AppViewModel = viewModel()) {
                     )
                 }
             }
+        }
+    }
+
+    if (showCoarseLocationExplanation) {
+        ModalBottomSheet(onDismissRequest = { showCoarseLocationExplanation = false }) {
+            PermissionExplanationContent(
+                title = "Allow approximate location?",
+                reason = "Kaval needs your location to show your position and share it with guardians during emergencies.",
+                onAllow = {
+                    showCoarseLocationExplanation = false
+                    coarseLocationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                },
+                onDismiss = { showCoarseLocationExplanation = false }
+            )
+        }
+    }
+
+    if (showFineLocationExplanation) {
+        ModalBottomSheet(onDismissRequest = { showFineLocationExplanation = false }) {
+            PermissionExplanationContent(
+                title = "Enable precise location?",
+                reason = "Precise location helps Kaval place you accurately on the map and attach a more useful location to SOS alerts.",
+                onAllow = {
+                    showFineLocationExplanation = false
+                    fineLocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                },
+                onDismiss = {
+                    showFineLocationExplanation = false
+                    viewModel.refreshLocation()
+                }
+            )
         }
     }
 }
@@ -317,12 +379,21 @@ private fun smsStatusPendingIntent(
 }
 
 private fun buildSmsAlertMessage(state: KavalUiState): String {
+    val locationBlock = state.locationState.location?.let { location ->
+        val coordinates = String.format(
+            java.util.Locale.US,
+            "%.6f, %.6f",
+            location.latitude,
+            location.longitude
+        )
+        "Coordinates: $coordinates\nLocation: ${location.mapsLink}"
+    } ?: "Location unavailable - GPS off or no signal.\nPlease try calling me immediately."
+
     return """
         Emergency Alert from Kaval.
         I may need help.
 
-        Location:
-        ${state.locationState.location?.mapsLink ?: "Location unavailable.\nPlease try calling me immediately."}
+        $locationBlock
 
         Time:
         ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}

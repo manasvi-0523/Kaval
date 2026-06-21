@@ -83,6 +83,7 @@ import com.kaval.app.core.components.KavalSecondaryButton
 import com.kaval.app.core.components.KavalSectionHeader
 import com.kaval.app.core.components.KavalStatusBadge
 import com.kaval.app.core.components.QuickAction
+import com.kaval.app.BuildConfig
 import com.kaval.app.core.theme.KavalColors
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
@@ -295,6 +296,7 @@ fun HomeScreen(
 fun MapScreen(
     state: KavalUiState,
     onBack: () -> Unit,
+    locationAccessDenied: Boolean,
     onRequestLocationPermission: () -> Unit,
     onRefreshLocation: () -> Unit
 ) {
@@ -309,6 +311,34 @@ fun MapScreen(
                 Column {
                     Text("GPS Status", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text("Supports SOS, Journey, and Guardian Mode", color = KavalColors.Muted)
+                }
+            }
+        }
+        item {
+            if (BuildConfig.MAPTILER_KEY.isBlank()) {
+                KavalGlassCard {
+                    KavalSectionHeader("Map unavailable")
+                    Text("Add MAPTILER_KEY to local.properties to load MapLibre tiles.")
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp)
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    MapLibreLocationMap(
+                        location = locationState.location,
+                        mapTilerKey = BuildConfig.MAPTILER_KEY,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (locationState.location == null) {
+                        KavalStatusBadge(
+                            "Showing Bengaluru demo location",
+                            KavalColors.Warning,
+                            Modifier.align(Alignment.TopCenter).padding(12.dp)
+                        )
+                    }
                 }
             }
         }
@@ -334,7 +364,25 @@ fun MapScreen(
                         }
                     )
                 }
-                if (locationState.status == LocationStatus.PERMISSION_NEEDED) {
+                if (locationAccessDenied && locationState.permissionLevel == LocationPermissionLevel.NONE) {
+                    Text("Location access denied", fontWeight = FontWeight.Bold)
+                    Text("You can continue without location, retry, or enable access in App Settings.", color = KavalColors.Muted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        KavalSecondaryButton("Try again", onRequestLocationPermission, Modifier.weight(1f))
+                        KavalPrimaryButton(
+                            "App Settings",
+                            {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                )
+                            },
+                            Modifier.weight(1f)
+                        )
+                    }
+                } else if (locationState.status == LocationStatus.PERMISSION_NEEDED) {
                     Text("Kaval uses location only when you request safety features. Background location is not requested.")
                     KavalPrimaryButton(
                         "Allow Location",
@@ -375,6 +423,21 @@ fun MapScreen(
                 Text("Kaval keeps only the latest location in memory. It does not store continuous movement history.", color = KavalColors.Muted)
             }
         }
+    }
+}
+
+@Composable
+fun PermissionExplanationContent(
+    title: String,
+    reason: String,
+    onAllow: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(reason, color = KavalColors.Muted)
+        KavalPrimaryButton("Allow", onAllow, Modifier.fillMaxWidth())
+        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
     }
 }
 

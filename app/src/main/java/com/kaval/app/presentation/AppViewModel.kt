@@ -157,14 +157,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopEmergency() = viewModelScope.launch {
         val state = uiState.value
+        val location = state.locationState.location
         repository.saveAlert(
             EmergencyAlert(
                 type = "Emergency Mode",
                 timestamp = System.currentTimeMillis(),
                 status = "Completed",
-                locationLabel = "Demo Location",
+                locationLabel = if (location != null) "Location attached" else "Location unavailable",
                 contactsNotified = state.contacts.size,
-                isDemo = state.demoMode
+                isDemo = state.demoMode,
+                locationStatus = if (location != null) "attached" else "unavailable",
+                mapsLink = location?.mapsLink
             )
         )
     }
@@ -244,7 +247,7 @@ private fun buildEmergencyMessage(profile: UserProfile): String {
         ${profile.emergencyNote}
 
         Location:
-        Demo Location
+        Latest verified GPS location is attached when available.
 
         Time:
         Current device time

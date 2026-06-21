@@ -206,6 +206,26 @@ Purpose:
 
 - Schedule weekly privacy cleanup for completed Safety Logs while retaining active emergency records.
 
+## Phase 1 Map Dependency
+
+Added through Gradle on June 21, 2026:
+
+```text
+org.maplibre.gl:android-sdk:11.0.0
+```
+
+Purpose:
+
+- Render the real-location map with MapLibre and Maptiler tiles without using the Google Maps SDK.
+
+Runtime requirement:
+
+```text
+MAPTILER_KEY=<key> in local.properties
+```
+
+The key is local-only and must never be committed. It was not present when the Phase 1 code was compiled, so tile rendering still requires local key configuration.
+
 ## Diagnostic Logs
 
 Temporary emulator logs generated during debugging:

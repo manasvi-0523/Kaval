@@ -5,8 +5,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.kaval.app.domain.model.KavalLocation
@@ -16,7 +21,12 @@ import com.kaval.app.domain.model.LocationStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 class LocationTracker(context: Context) {
     private val appContext = context.applicationContext
@@ -57,13 +67,7 @@ class LocationTracker(context: Context) {
             lastKnown = fusedClient.lastLocation.await()
             lastKnown?.let { publishLocation(it, permissionLevel, isFresh = false) }
 
-            val priority = if (permissionLevel == LocationPermissionLevel.PRECISE) {
-                Priority.PRIORITY_HIGH_ACCURACY
-            } else {
-                Priority.PRIORITY_BALANCED_POWER_ACCURACY
-            }
-            val cancellationTokenSource = CancellationTokenSource()
-            val current = fusedClient.getCurrentLocation(priority, cancellationTokenSource.token).await()
+            val current = requestBestCurrentLocation(permissionLevel)
 
             if (current != null) {
                 publishLocation(current, permissionLevel, isFresh = true)
@@ -79,6 +83,58 @@ class LocationTracker(context: Context) {
                 publishLocation(lastKnown, permissionLevel, isFresh = false)
             }
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun requestBestCurrentLocation(permissionLevel: LocationPermissionLevel): Location? {
+        val priority = if (permissionLevel == LocationPermissionLevel.PRECISE) {
+            Priority.PRIORITY_HIGH_ACCURACY
+        } else {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
+        val currentRequest = CurrentLocationRequest.Builder()
+            .setPriority(priority)
+            .setMaxUpdateAgeMillis(0L)
+            .setDurationMillis(15_000L)
+            .build()
+        val cancellationTokenSource = CancellationTokenSource()
+        val current = fusedClient.getCurrentLocation(currentRequest, cancellationTokenSource.token).await()
+
+        if (permissionLevel != LocationPermissionLevel.PRECISE || current.isAccurateEnough()) {
+            return current
+        }
+
+        var best = current
+        val refined = withTimeoutOrNull(15_000L) {
+            callbackFlow {
+                val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
+                    .setMinUpdateIntervalMillis(500L)
+                    .setMaxUpdateDelayMillis(1_000L)
+                    .setWaitForAccurateLocation(true)
+                    .build()
+                val callback = object : LocationCallback() {
+                    override fun onLocationResult(result: LocationResult) {
+                        result.lastLocation?.let(::trySend)
+                    }
+                }
+                fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+                awaitClose { fusedClient.removeLocationUpdates(callback) }
+            }.onEach { candidate ->
+                if (best == null || candidate.accuracyOrMax() < best.accuracyOrMax()) {
+                    best = candidate
+                    publishImprovingAccuracy(candidate)
+                }
+            }.first { it.isAccurateEnough() }
+        }
+        return refined ?: best
+    }
+
+    private fun publishImprovingAccuracy(location: Location) {
+        mutableState.value = mutableState.value.copy(
+            location = location.toKavalLocation(),
+            status = LocationStatus.WAITING_FOR_GPS,
+            message = "Improving GPS accuracy. Keep the phone near an open view of the sky."
+        )
     }
 
     private fun currentPermissionLevel(): LocationPermissionLevel {
@@ -100,29 +156,42 @@ class LocationTracker(context: Context) {
         permissionLevel: LocationPermissionLevel,
         isFresh: Boolean
     ) {
-        val location = KavalLocation(
-            latitude = androidLocation.latitude,
-            longitude = androidLocation.longitude,
-            accuracyMeters = if (androidLocation.hasAccuracy()) androidLocation.accuracy else null,
-            timestampMillis = androidLocation.time.takeIf { it > 0 } ?: System.currentTimeMillis(),
-            providerStatus = androidLocation.provider,
-            mapsLink = "https://maps.google.com/?q=${androidLocation.latitude},${androidLocation.longitude}"
-        )
+        val location = androidLocation.toKavalLocation()
         val isApproximate = permissionLevel == LocationPermissionLevel.APPROXIMATE
+        val isLowAccuracy = permissionLevel == LocationPermissionLevel.PRECISE && androidLocation.accuracyOrMax() > 50f
         mutableState.value = KavalLocationState(
             location = location,
             permissionLevel = permissionLevel,
             status = when {
                 isApproximate -> LocationStatus.APPROXIMATE
+                isLowAccuracy -> LocationStatus.STALE
                 isFresh -> LocationStatus.LIVE
                 else -> LocationStatus.STALE
             },
             message = when {
                 isApproximate -> "Approximate location only. Accuracy may be limited."
+                isLowAccuracy -> "GPS accuracy is limited. Move outdoors or near a window, then refresh."
                 isFresh -> "Live location active."
                 else -> "Showing the last known location while GPS refreshes."
             }
         )
+    }
+
+    private fun Location.toKavalLocation() = KavalLocation(
+        latitude = latitude,
+        longitude = longitude,
+        accuracyMeters = if (hasAccuracy()) accuracy else null,
+        timestampMillis = time.takeIf { it > 0 } ?: System.currentTimeMillis(),
+        providerStatus = provider,
+        mapsLink = "https://maps.google.com/?q=$latitude,$longitude"
+    )
+
+    private fun Location?.isAccurateEnough(): Boolean {
+        return this != null && hasAccuracy() && accuracy <= 25f
+    }
+
+    private fun Location?.accuracyOrMax(): Float {
+        return if (this != null && hasAccuracy()) accuracy else Float.MAX_VALUE
     }
 
     private fun publishUnavailable(permissionLevel: LocationPermissionLevel) {
