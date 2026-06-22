@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.telephony.SmsManager
 import com.kaval.app.KavalApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,25 +15,48 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val incidentId = intent.getLongExtra(EXTRA_INCIDENT_ID, -1L)
         val contactId = intent.getLongExtra(EXTRA_CONTACT_ID, -1L)
+        val messageType = intent.getStringExtra(EXTRA_MESSAGE_TYPE) ?: return
         val isFinalPart = intent.getBooleanExtra(EXTRA_FINAL_PART, false)
         if (incidentId < 0 || contactId < 0) return
-
         if (!isFinalPart && resultCode == Activity.RESULT_OK) return
 
-        val status = when (intent.action) {
-            ACTION_SMS_SENT -> if (resultCode == Activity.RESULT_OK) "sent" else "failed"
-            ACTION_SMS_DELIVERED -> if (resultCode == Activity.RESULT_OK) "delivered" else "failed"
-            else -> return
-        }
         val pendingResult = goAsync()
         val repository = (context.applicationContext as KavalApplication).repository
         receiverScope.launch {
             try {
-                repository.updateSmsDelivery(incidentId, contactId, status)
+                when (intent.action) {
+                    ACTION_SMS_SENT -> repository.updateSmsSent(
+                        incidentId = incidentId,
+                        contactId = contactId,
+                        messageType = messageType,
+                        status = if (resultCode == Activity.RESULT_OK) "SENT" else "FAILED",
+                        failureReason = if (resultCode == Activity.RESULT_OK) null else sentFailureReason(resultCode),
+                        resultCode = resultCode
+                    )
+                    ACTION_SMS_DELIVERED -> repository.updateSmsDelivery(
+                        incidentId = incidentId,
+                        contactId = contactId,
+                        messageType = messageType,
+                        status = if (resultCode == Activity.RESULT_OK) "DELIVERED" else "DELIVERY_UNKNOWN",
+                        failureReason = if (resultCode == Activity.RESULT_OK) null else "Carrier delivery receipt unavailable",
+                        resultCode = resultCode
+                    )
+                }
             } finally {
                 pendingResult.finish()
             }
         }
+    }
+
+    private fun sentFailureReason(code: Int): String = when (code) {
+        SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "Generic SMS failure"
+        SmsManager.RESULT_ERROR_NO_SERVICE -> "No cellular service"
+        SmsManager.RESULT_ERROR_NULL_PDU -> "Invalid SMS payload"
+        SmsManager.RESULT_ERROR_RADIO_OFF -> "Cellular radio is off"
+        SmsManager.RESULT_ERROR_LIMIT_EXCEEDED -> "SMS sending limit exceeded"
+        SmsManager.RESULT_ERROR_SHORT_CODE_NOT_ALLOWED -> "Short-code sending not allowed"
+        SmsManager.RESULT_ERROR_SHORT_CODE_NEVER_ALLOWED -> "Short-code sending blocked"
+        else -> "SMS failed with result code $code"
     }
 
     companion object {
@@ -40,6 +64,7 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
         const val ACTION_SMS_DELIVERED = "com.kaval.app.SMS_DELIVERED"
         const val EXTRA_INCIDENT_ID = "incident_id"
         const val EXTRA_CONTACT_ID = "contact_id"
+        const val EXTRA_MESSAGE_TYPE = "message_type"
         const val EXTRA_FINAL_PART = "final_part"
 
         private val receiverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

@@ -2,6 +2,7 @@ package com.kaval.app.presentation
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
@@ -39,12 +40,15 @@ import com.kaval.app.presentation.screens.MapScreen
 import com.kaval.app.presentation.screens.PermissionExplanationContent
 import com.kaval.app.presentation.screens.ProfileScreen
 import com.kaval.app.presentation.screens.SettingsScreen
+import com.kaval.app.service.AudioRecordingService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KavalApp(
     viewModel: AppViewModel = viewModel(),
-    sosViewModel: SosViewModel = viewModel()
+    sosViewModel: SosViewModel = viewModel(),
+    openEmergencyMode: Boolean = false,
+    onEmergencyIntentConsumed: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -52,7 +56,9 @@ fun KavalApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val bottomRoutes = BottomNavItems.map { it.route }.toSet()
-    var pendingEmergencyAfterPermission by remember { mutableStateOf(false) }
+    var pendingSmsPermissionGranted by remember { mutableStateOf(false) }
+    var showSmsExplanation by remember { mutableStateOf(false) }
+    var showAudioExplanation by remember { mutableStateOf(false) }
     var showCoarseLocationExplanation by remember { mutableStateOf(false) }
     var showFineLocationExplanation by remember { mutableStateOf(false) }
     var locationPermissionDenied by remember { mutableStateOf(false) }
@@ -108,28 +114,66 @@ fun KavalApp(
         }
     }
 
-    fun triggerSos(smsPermissionGranted: Boolean) {
-        sosViewModel.trigger(state, smsPermissionGranted) {
+    LaunchedEffect(openEmergencyMode) {
+        if (openEmergencyMode) {
+            enterEmergencyMode()
+            onEmergencyIntentConsumed()
+        }
+    }
+
+    fun triggerSos(smsPermissionGranted: Boolean, audioPermissionGranted: Boolean) {
+        sosViewModel.trigger(state, smsPermissionGranted, audioPermissionGranted) {
             enterEmergencyMode()
         }
+    }
+
+    fun hasRecordingPermissions(): Boolean {
+        val hasAudio = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasNotifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        return hasAudio && hasNotifications
+    }
+
+    fun continueAfterSmsDecision(smsPermissionGranted: Boolean) {
+        pendingSmsPermissionGranted = smsPermissionGranted
+        if (hasRecordingPermissions()) {
+            triggerSos(smsPermissionGranted, audioPermissionGranted = true)
+        } else {
+            showAudioExplanation = true
+        }
+    }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val audioGranted = grants[Manifest.permission.RECORD_AUDIO] == true
+        val notificationGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            grants[Manifest.permission.POST_NOTIFICATIONS] == true ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        triggerSos(
+            smsPermissionGranted = pendingSmsPermissionGranted,
+            audioPermissionGranted = audioGranted && notificationGranted
+        )
     }
 
     val smsPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (pendingEmergencyAfterPermission) {
-            if (granted) {
-                triggerSos(smsPermissionGranted = true)
-            } else {
-                triggerSos(smsPermissionGranted = false)
-            }
-            pendingEmergencyAfterPermission = false
-        }
+        continueAfterSmsDecision(granted)
     }
 
     fun triggerEmergencyFlow() {
         if (state.demoMode) {
-            triggerSos(smsPermissionGranted = false)
+            triggerSos(smsPermissionGranted = false, audioPermissionGranted = false)
             return
         }
 
@@ -139,13 +183,11 @@ fun KavalApp(
         ) == PackageManager.PERMISSION_GRANTED
 
         if (hasSmsPermission) {
-            triggerSos(smsPermissionGranted = true)
+            continueAfterSmsDecision(smsPermissionGranted = true)
         } else {
-            pendingEmergencyAfterPermission = true
-            smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+            showSmsExplanation = true
         }
     }
-
     KavalTheme(settings = state.appearance) {
         Scaffold(
             bottomBar = {
@@ -237,6 +279,7 @@ fun KavalApp(
                     EmergencyModeScreen(
                         state = state,
                         onStop = {
+                            AudioRecordingService.stop(context)
                             viewModel.stopEmergency()
                             navController.navigate(KavalRoutes.Home) {
                                 popUpTo(KavalRoutes.Home) { inclusive = true }
@@ -278,4 +321,49 @@ fun KavalApp(
             )
         }
     }
-}
+
+    if (showSmsExplanation) {
+        ModalBottomSheet(onDismissRequest = {
+            showSmsExplanation = false
+            continueAfterSmsDecision(smsPermissionGranted = false)
+        }) {
+            PermissionExplanationContent(
+                title = "Allow emergency SMS?",
+                reason = "Kaval uses SMS only when a real SOS is triggered. If denied, Emergency Mode still opens, but trusted contacts will not receive the cellular alert.",
+                onAllow = {
+                    showSmsExplanation = false
+                    smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                },
+                onDismiss = {
+                    showSmsExplanation = false
+                    continueAfterSmsDecision(smsPermissionGranted = false)
+                }
+            )
+        }
+    }
+
+    if (showAudioExplanation) {
+        ModalBottomSheet(onDismissRequest = {
+            showAudioExplanation = false
+            triggerSos(pendingSmsPermissionGranted, audioPermissionGranted = false)
+        }) {
+            PermissionExplanationContent(
+                title = "Record local SOS evidence?",
+                reason = "Kaval records audio only after a real SOS so you have local evidence. A persistent notification stays visible, recording stops after 10 minutes, and the file never leaves this device unless you share it.",
+                onAllow = {
+                    showAudioExplanation = false
+                    val permissions = buildList {
+                        add(Manifest.permission.RECORD_AUDIO)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }.toTypedArray()
+                    audioPermissionLauncher.launch(permissions)
+                },
+                onDismiss = {
+                    showAudioExplanation = false
+                    triggerSos(pendingSmsPermissionGranted, audioPermissionGranted = false)
+                }
+            )
+        }
+    }}

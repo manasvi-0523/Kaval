@@ -10,10 +10,12 @@ import androidx.lifecycle.viewModelScope
 import com.kaval.app.KavalApplication
 import com.kaval.app.data.sms.SmsDeliveryStatusReceiver
 import com.kaval.app.domain.model.EmergencyAlert
+import com.kaval.app.domain.model.KavalLocation
 import com.kaval.app.domain.model.LocationStatus
 import com.kaval.app.domain.model.TrustedContact
+import com.kaval.app.service.AudioRecordingService
 import kotlinx.coroutines.launch
-import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
@@ -25,6 +27,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
     fun trigger(
         state: KavalUiState,
         smsPermissionGranted: Boolean,
+        audioPermissionGranted: Boolean,
         onEmergencyReady: () -> Unit
     ) = viewModelScope.launch {
         if (!state.demoMode) locationTracker.refreshLocation()
@@ -45,9 +48,12 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             else -> null
         }
         val locationAttached = location != null && latestLocationState.status != LocationStatus.PERMISSION_NEEDED
+        val message = buildSosMessage(state, location)
         val incidentId = repository.saveAlert(
             EmergencyAlert(
-                type = "SOS Alert",
+                type = MESSAGE_TYPE,
+                title = "SOS Alert",
+                message = message,
                 timestamp = System.currentTimeMillis(),
                 status = "Active",
                 locationLabel = if (locationAttached) "Location attached" else "Location unavailable",
@@ -62,13 +68,13 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             )
         )
 
+        if (!state.demoMode && audioPermissionGranted) {
+            runCatching { AudioRecordingService.start(app, incidentId) }
+        }
+
         if (!state.demoMode && smsPermissionGranted && contacts.isNotEmpty()) {
-            repository.initializeSmsDeliveries(incidentId, contacts)
-            sendMultipartSms(
-                incidentId = incidentId,
-                contacts = contacts,
-                message = buildSosMessage(state, latestLocationState.location)
-            )
+            repository.initializeSmsDeliveries(incidentId, contacts, MESSAGE_TYPE)
+            sendMultipartSms(incidentId, contacts, message)
         }
         onEmergencyReady()
     }
@@ -113,10 +119,16 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
                     sentIntents,
                     deliveredIntents
                 )
-            } catch (_: SecurityException) {
-                repository.updateSmsDelivery(incidentId, contact.id, "failed")
-            } catch (_: RuntimeException) {
-                repository.updateSmsDelivery(incidentId, contact.id, "failed")
+            } catch (error: SecurityException) {
+                repository.updateSmsSent(
+                    incidentId, contact.id, MESSAGE_TYPE, "FAILED",
+                    error.message ?: "SMS permission denied", SmsManager.RESULT_ERROR_GENERIC_FAILURE
+                )
+            } catch (error: RuntimeException) {
+                repository.updateSmsSent(
+                    incidentId, contact.id, MESSAGE_TYPE, "FAILED",
+                    error.message ?: "SMS send failed", SmsManager.RESULT_ERROR_GENERIC_FAILURE
+                )
             }
         }
     }
@@ -132,6 +144,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             this.action = action
             putExtra(SmsDeliveryStatusReceiver.EXTRA_INCIDENT_ID, incidentId)
             putExtra(SmsDeliveryStatusReceiver.EXTRA_CONTACT_ID, contactId)
+            putExtra(SmsDeliveryStatusReceiver.EXTRA_MESSAGE_TYPE, MESSAGE_TYPE)
             putExtra(SmsDeliveryStatusReceiver.EXTRA_FINAL_PART, partIndex == partCount - 1)
         }
         val requestCode = listOf(action, incidentId, contactId, partIndex).hashCode()
@@ -143,20 +156,34 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    private fun buildSosMessage(
-        state: KavalUiState,
-        location: com.kaval.app.domain.model.KavalLocation?
-    ): String {
-        val locationBlock = location?.let {
-            val coordinates = String.format(Locale.US, "%.6f, %.6f", it.latitude, it.longitude)
-            "Coordinates: $coordinates\nLocation: ${it.mapsLink}"
-        } ?: "Location unavailable - GPS off or no signal"
+    private fun buildSosMessage(state: KavalUiState, location: KavalLocation?): String {
+        val profileName = state.profile.name.trim().ifBlank { "Kaval User" }
+        val customMessage = state.profile.emergencyNote
+            .lines()
+            .joinToString(" ") { it.trim() }
+            .replace(Regex(" +"), " ")
+            .trim()
+            .ifBlank { "I may be in danger. Please check on me immediately." }
+            .take(MAX_CUSTOM_MESSAGE_LENGTH)
+        val time = SimpleDateFormat("HH:mm dd/MM/yyyy", Locale.getDefault()).format(Date())
 
-        return """
-            ${state.profile.name} needs help.
-            $locationBlock
-            Time: ${DateFormat.getDateTimeInstance().format(Date())}
-            Sent via Kaval.
-        """.trimIndent()
+        return buildList {
+            add("SOS ALERT")
+            add(customMessage)
+            add("Name: $profileName")
+            if (location != null) {
+                add("Location: ${location.mapsLink}")
+                add("Coordinates: ${String.format(Locale.US, "%.6f,%.6f", location.latitude, location.longitude)}")
+            } else {
+                add("Location unavailable - GPS off or no signal")
+            }
+            add("Time: $time")
+            add("Sent via Kaval")
+        }.joinToString("\n")
+    }
+
+    companion object {
+        private const val MESSAGE_TYPE = "SOS"
+        private const val MAX_CUSTOM_MESSAGE_LENGTH = 240
     }
 }

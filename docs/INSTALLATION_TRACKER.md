@@ -258,3 +258,22 @@ adb shell monkey -p com.kaval.app 1
 Alternative path:
 
 - Start the Android Emulator Hypervisor Driver as Administrator, or enable a supported Windows emulator acceleration stack, then retry `KavalPixel`.
+
+## Phase 2 SOS Recording Platform APIs
+
+Added on June 22, 2026. No third-party dependency or global executable was installed.
+
+Android platform components used:
+
+- MediaRecorder with MPEG_4 and AAC.
+- Foreground microphone service.
+- PowerManager.PARTIAL_WAKE_LOCK.
+- FileProvider for user-initiated audio sharing.
+- Room database schema version 4.
+
+Project files created:
+
+- app/src/main/java/com/kaval/app/service/AudioRecordingService.kt
+- app/src/main/res/xml/file_paths.xml
+
+Recordings are created only after a real SOS with permission and remain under context.filesDir/sos_recordings/. They are not uploaded or exposed to the gallery. The Incident Log player reads them locally; sharing requires an explicit long press by the user.

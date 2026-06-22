@@ -1,10 +1,12 @@
 package com.kaval.app.presentation.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
@@ -43,6 +45,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -54,6 +58,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,6 +80,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.kaval.app.core.components.EmptyState
 import com.kaval.app.core.components.KavalActivityCard
 import com.kaval.app.core.components.KavalContactCard
@@ -95,6 +102,7 @@ import com.kaval.app.domain.model.TrustedContact
 import com.kaval.app.domain.model.UserProfile
 import com.kaval.app.presentation.KavalUiState
 import kotlinx.coroutines.delay
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -584,6 +592,7 @@ fun ActivityLogScreen(
     onRetentionChange: (Int) -> Unit
 ) {
     val context = LocalContext.current
+    var recordingPath by remember { mutableStateOf<String?>(null) }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
@@ -621,17 +630,130 @@ fun ActivityLogScreen(
         if (alerts.isEmpty()) {
             item { EmptyState("No emergency activity yet.") }
         } else {
-            items(alerts, key = { it.id }) { alert -> KavalActivityCard(alert) }
+            items(alerts, key = { it.id }) { alert ->
+                KavalActivityCard(
+                    alert = alert,
+                    onPlayRecording = { recordingPath = it },
+                    onShareRecording = { shareRecording(context, it) }
+                )
+            }
+        }
+    }
+
+    recordingPath?.let { path ->
+        RecordingPlayerSheet(path = path, onDismiss = { recordingPath = null })
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecordingPlayerSheet(path: String, onDismiss: () -> Unit) {
+    val file = remember(path) { File(path) }
+    val player = remember(path) {
+        runCatching {
+            MediaPlayer().apply {
+                setDataSource(path)
+                prepare()
+            }
+        }.getOrNull()
+    }
+    var isPlaying by remember(path) { mutableStateOf(false) }
+    var position by remember(path) { mutableIntStateOf(0) }
+    val duration = player?.duration?.coerceAtLeast(0) ?: 0
+
+    DisposableEffect(player) {
+        player?.setOnCompletionListener {
+            isPlaying = false
+            position = duration
+        }
+        onDispose {
+            runCatching { player?.stop() }
+            player?.release()
+        }
+    }
+    LaunchedEffect(isPlaying, player) {
+        while (isPlaying && player != null) {
+            position = player.currentPosition.coerceIn(0, duration.coerceAtLeast(1))
+            delay(250)
+        }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("SOS recording", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(file.name, color = KavalColors.Muted)
+            IconButton(
+                onClick = {
+                    if (player == null) return@IconButton
+                    if (isPlaying) player.pause() else player.start()
+                    isPlaying = !isPlaying
+                },
+                enabled = player != null
+            ) {
+                Icon(
+                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play"
+                )
+            }
+            Slider(
+                value = position.toFloat(),
+                onValueChange = {
+                    position = it.toInt()
+                    player?.seekTo(position)
+                },
+                valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
+                enabled = player != null
+            )
+            Text("${formatDuration(position)} / ${formatDuration(duration)}", color = KavalColors.Muted)
+            Text("Long-press the recording icon in the Incident Log to share.", color = KavalColors.Muted)
         }
     }
 }
 
+private fun shareRecording(context: Context, path: String) {
+    val file = File(path)
+    if (!file.exists()) {
+        Toast.makeText(context, "Recording file is unavailable", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "audio/mp4"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share SOS recording"))
+}
+
+private fun formatDuration(milliseconds: Int): String {
+    val totalSeconds = milliseconds.coerceAtLeast(0) / 1000
+    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+}
 private fun buildSafetyLogCsv(alerts: List<EmergencyAlert>): String {
-    val header = "time,type,mode,status,location_status,maps_link,sms_status,sent,delivered,failed,contacts_attempted,error"
+    val header = "time,type,title,message,mode,status,location_status,maps_link,sms_status,sent,delivered,failed,contacts_attempted,contact_results,recording,error"
     val rows = alerts.map { alert ->
+        val contactResults = alert.contactStatuses.joinToString("; ") { contact ->
+            buildString {
+                append(contact.contactName)
+                append(": ")
+                append(contact.sentStatus)
+                append("/")
+                append(contact.deliveryStatus)
+                contact.failureReason?.let { append(" (").append(it).append(")") }
+            }
+        }
         listOf(
             DateFormat.getDateTimeInstance().format(Date(alert.timestamp)),
             alert.type,
+            alert.title,
+            alert.message,
             if (alert.isDemo) "Demo" else "Real",
             alert.status,
             alert.locationStatus,
@@ -641,12 +763,13 @@ private fun buildSafetyLogCsv(alerts: List<EmergencyAlert>): String {
             alert.deliveredCount,
             alert.failedCount,
             alert.contactsAttempted,
+            contactResults,
+            alert.audioFilePath?.let { File(it).name }.orEmpty(),
             alert.errorReason.orEmpty()
         ).joinToString(",") { csvEscape(it.toString()) }
     }
     return (listOf(header) + rows).joinToString("\n")
 }
-
 private fun csvEscape(value: String): String = "\"${value.replace("\"", "\"\"")}\""
 
 @Composable
@@ -1055,7 +1178,7 @@ fun EmergencyCountdownScreen(onCancel: () -> Unit, onTriggered: () -> Unit) {
     DisposableEffect(Unit) {
         @Suppress("DEPRECATION")
         val wakeLock = context.getSystemService(PowerManager::class.java).newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
+            PowerManager.PARTIAL_WAKE_LOCK,
             "Kaval:SosCountdown"
         ).apply { acquire(10_000L) }
         view.keepScreenOn = true

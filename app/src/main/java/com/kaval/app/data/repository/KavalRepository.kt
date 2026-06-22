@@ -3,9 +3,9 @@ package com.kaval.app.data.repository
 import com.kaval.app.data.datastore.KavalPreferences
 import com.kaval.app.data.local.dao.IncidentDao
 import com.kaval.app.data.local.dao.TrustedContactDao
+import com.kaval.app.data.local.entities.SmsDeliveryEntity
 import com.kaval.app.data.local.entities.toDomain
 import com.kaval.app.data.local.entities.toEntity
-import com.kaval.app.data.local.entities.IncidentContactStatusEntity
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.TrustedContact
@@ -38,30 +38,53 @@ class KavalRepository(
 
     suspend fun saveAlert(alert: EmergencyAlert): Long = incidentDao.insert(alert.toEntity())
 
-    suspend fun initializeSmsDeliveries(alertId: Long, contacts: List<TrustedContact>) {
-        incidentDao.insertContactStatuses(
+    suspend fun initializeSmsDeliveries(
+        incidentId: Long,
+        contacts: List<TrustedContact>,
+        messageType: String
+    ) {
+        incidentDao.insertSmsDeliveries(
             contacts.map { contact ->
-                IncidentContactStatusEntity(
-                    incidentId = alertId,
+                SmsDeliveryEntity(
+                    incidentId = incidentId,
                     contactId = contact.id,
                     contactName = contact.name,
-                    phoneNumber = contact.phoneNumber
+                    phoneNumber = contact.phoneNumber,
+                    messageType = messageType
                 )
             }
         )
     }
 
-    suspend fun updateSmsDelivery(alertId: Long, contactId: Long, status: String) {
-        incidentDao.updateContactAndSummary(alertId, contactId, status)
+    suspend fun updateSmsSent(
+        incidentId: Long,
+        contactId: Long,
+        messageType: String,
+        status: String,
+        failureReason: String?,
+        resultCode: Int
+    ) = incidentDao.updateSentAndSummary(
+        incidentId, contactId, messageType, status, failureReason, resultCode
+    )
+
+    suspend fun updateSmsDelivery(
+        incidentId: Long,
+        contactId: Long,
+        messageType: String,
+        status: String,
+        failureReason: String?,
+        resultCode: Int
+    ) = incidentDao.updateDeliveryAndSummary(
+        incidentId, contactId, messageType, status, failureReason, resultCode
+    )
+
+    suspend fun setIncidentAudioPath(incidentId: Long, path: String?) {
+        incidentDao.updateAudioFilePath(incidentId, path)
     }
 
     suspend fun setDemoMode(enabled: Boolean) = preferences.setDemoMode(enabled)
-
     suspend fun setLogRetentionDays(days: Int) = preferences.setLogRetentionDays(days)
-
     suspend fun deleteOldCompletedLogs(cutoff: Long) = incidentDao.deleteOldCompletedLogs(cutoff)
-
     suspend fun saveProfile(profile: UserProfile) = preferences.saveProfile(profile)
-
     suspend fun saveAppearance(settings: AppearanceSettings) = preferences.saveAppearance(settings)
 }

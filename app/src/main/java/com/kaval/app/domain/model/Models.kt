@@ -51,12 +51,15 @@ data class EmergencyAlert(
     val id: Long = 0,
     val type: String,
     val timestamp: Long,
+    val title: String = type,
+    val message: String = "",
     val status: String,
     val locationLabel: String,
     val contactsNotified: Int,
     val isDemo: Boolean,
     val locationStatus: String = "unavailable",
     val mapsLink: String? = null,
+    val audioFilePath: String? = null,
     val smsStatus: String = "queued",
     val sentCount: Int = 0,
     val deliveredCount: Int = 0,
@@ -71,9 +74,23 @@ data class SmsContactStatus(
     val contactId: Long,
     val contactName: String,
     val phoneNumber: String,
-    val status: String,
-    val updatedAt: Long
-)
+    val messageType: String,
+    val sentStatus: String,
+    val deliveryStatus: String,
+    val sentAtEpochMillis: Long?,
+    val deliveredAtEpochMillis: Long?,
+    val failureReason: String?,
+    val resultCode: Int?
+) {
+    val displayStatus: String
+        get() = when {
+            sentStatus == "FAILED" -> "FAILED"
+            deliveryStatus == "DELIVERED" -> "DELIVERED"
+            sentStatus == "SENT" && deliveryStatus == "DELIVERY_UNKNOWN" -> "DELIVERY UNKNOWN"
+            sentStatus == "SENT" -> "SENT"
+            else -> "PENDING"
+        }
+}
 
 data class AppearanceSettings(
     val themeMode: String = "Dark",

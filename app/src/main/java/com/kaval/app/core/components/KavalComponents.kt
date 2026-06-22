@@ -9,6 +9,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContactPhone
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
@@ -219,8 +222,13 @@ fun KavalContactCard(contact: TrustedContact, onEdit: () -> Unit, onDelete: () -
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun KavalActivityCard(alert: EmergencyAlert) {
+fun KavalActivityCard(
+    alert: EmergencyAlert,
+    onPlayRecording: (String) -> Unit = {},
+    onShareRecording: (String) -> Unit = {}
+) {
     var contactsExpanded by remember(alert.id) { mutableStateOf(false) }
 
     KavalGlassCard {
@@ -229,6 +237,23 @@ fun KavalActivityCard(alert: EmergencyAlert) {
             Column(Modifier.weight(1f)) {
                 Text(alert.type, fontWeight = FontWeight.Bold)
                 Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(alert.timestamp)), color = KavalColors.Muted)
+            }
+            alert.audioFilePath?.let { path ->
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .combinedClickable(
+                            onClick = { onPlayRecording(path) },
+                            onLongClick = { onShareRecording(path) }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.GraphicEq,
+                        contentDescription = "Play SOS recording",
+                        tint = KavalColors.Emergency
+                    )
+                }
             }
             KavalStatusBadge(if (alert.isDemo) "Demo" else "Real", if (alert.isDemo) KavalColors.Trust else KavalColors.Safe)
         }
@@ -256,12 +281,15 @@ fun KavalActivityCard(alert: EmergencyAlert) {
                             Text(contact.contactName, fontWeight = FontWeight.Bold)
                             Text(contact.phoneNumber, color = KavalColors.Muted)
                         }
-                        val statusColor = when (contact.status) {
-                            "sent", "delivered" -> KavalColors.Safe
-                            "failed", "permission_denied" -> KavalColors.Warning
+                        val statusColor = when (contact.displayStatus) {
+                            "SENT", "DELIVERED" -> KavalColors.Safe
+                            "FAILED" -> KavalColors.Warning
                             else -> KavalColors.Trust
                         }
-                        KavalStatusBadge(contact.status.replace('_', ' '), statusColor)
+                        KavalStatusBadge(contact.displayStatus, statusColor)
+                    }
+                    contact.failureReason?.let { reason ->
+                        Text(reason, color = KavalColors.Warning)
                     }
                 }
             }

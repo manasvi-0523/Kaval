@@ -9,12 +9,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.kaval.app.data.local.dao.IncidentDao
 import com.kaval.app.data.local.dao.TrustedContactDao
 import com.kaval.app.data.local.entities.IncidentEntity
-import com.kaval.app.data.local.entities.IncidentContactStatusEntity
+import com.kaval.app.data.local.entities.SmsDeliveryEntity
 import com.kaval.app.data.local.entities.TrustedContactEntity
 
 @Database(
-    entities = [TrustedContactEntity::class, IncidentEntity::class, IncidentContactStatusEntity::class],
-    version = 3,
+    entities = [TrustedContactEntity::class, IncidentEntity::class, SmsDeliveryEntity::class],
+    version = 4,
     exportSchema = false
 )
 abstract class KavalDatabase : RoomDatabase() {
@@ -26,7 +26,7 @@ abstract class KavalDatabase : RoomDatabase() {
             context.applicationContext,
             KavalDatabase::class.java,
             "kaval.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -90,6 +90,48 @@ abstract class KavalDatabase : RoomDatabase() {
                 """.trimIndent())
                 db.execSQL("DROP TABLE sms_deliveries")
                 db.execSQL("DROP TABLE emergency_alerts")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE incident_log ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE incident_log ADD COLUMN message TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE incident_log ADD COLUMN audioFilePath TEXT")
+                db.execSQL("ALTER TABLE incident_log ADD COLUMN exportedBeforeDelete INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE incident_log ADD COLUMN expiresAtEpochMillis INTEGER")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sms_deliveries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        incidentId INTEGER NOT NULL,
+                        contactId INTEGER NOT NULL,
+                        contactName TEXT NOT NULL,
+                        phoneNumber TEXT NOT NULL,
+                        messageType TEXT NOT NULL,
+                        sentStatus TEXT NOT NULL,
+                        deliveryStatus TEXT NOT NULL,
+                        sentAtEpochMillis INTEGER,
+                        deliveredAtEpochMillis INTEGER,
+                        failureReason TEXT,
+                        resultCode INTEGER
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO sms_deliveries (
+                        incidentId, contactId, contactName, phoneNumber, messageType,
+                        sentStatus, deliveryStatus, sentAtEpochMillis, deliveredAtEpochMillis
+                    )
+                    SELECT incidentId, contactId, contactName, phoneNumber, 'SOS',
+                           CASE WHEN status IN ('sent', 'delivered') THEN 'SENT'
+                                WHEN status = 'failed' THEN 'FAILED' ELSE 'PENDING' END,
+                           CASE WHEN status = 'delivered' THEN 'DELIVERED'
+                                WHEN status = 'failed' THEN 'DELIVERY_UNKNOWN' ELSE 'PENDING' END,
+                           updatedAt,
+                           CASE WHEN status = 'delivered' THEN updatedAt ELSE NULL END
+                    FROM incident_contact_status
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sms_deliveries_incidentId_contactId_messageType ON sms_deliveries (incidentId, contactId, messageType)")
+                db.execSQL("DROP TABLE incident_contact_status")
             }
         }
     }
