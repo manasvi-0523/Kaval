@@ -4,7 +4,7 @@ Kaval is an Android-first personal safety companion MVP built with Kotlin and Je
 
 ## Status
 
-MVP / Demo Build
+MVP  Build
 
 Build status: `./gradlew assembleDebug` has been verified locally.
 
