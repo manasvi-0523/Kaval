@@ -1,6 +1,6 @@
 # Kaval
 
-Kaval is an Android-first personal safety companion MVP built with Kotlin and Jetpack Compose.
+Kaval is an Android-first personal safety companion MVP
 
 ## Status
 
