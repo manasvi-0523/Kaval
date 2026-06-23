@@ -46,7 +46,7 @@ interface IncidentDao {
             deliveredAtEpochMillis = :timestamp,
             failureReason = COALESCE(:failureReason, failureReason),
             resultCode = :resultCode
-        WHERE incidentId = :incidentId AND contactId = :contactId AND messageType = :messageType
+        WHERE incidentId = :incidentId AND contactId = :contactId AND messageType = :messageType AND sentStatus != 'FAILED'
     """)
     suspend fun updateDeliveryStatus(
         incidentId: Long,

@@ -35,12 +35,14 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -238,23 +240,6 @@ fun KavalActivityCard(
                 Text(alert.type, fontWeight = FontWeight.Bold)
                 Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(alert.timestamp)), color = KavalColors.Muted)
             }
-            alert.audioFilePath?.let { path ->
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .combinedClickable(
-                            onClick = { onPlayRecording(path) },
-                            onLongClick = { onShareRecording(path) }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.GraphicEq,
-                        contentDescription = "Play SOS recording",
-                        tint = KavalColors.Emergency
-                    )
-                }
-            }
             KavalStatusBadge(if (alert.isDemo) "Demo" else "Real", if (alert.isDemo) KavalColors.Trust else KavalColors.Safe)
         }
         Text("Status: ${alert.status}")
@@ -266,6 +251,29 @@ fun KavalActivityCard(
             Text("Failed: ${alert.failedCount}")
         }
         alert.errorReason?.let { Text("Issue: $it", color = KavalColors.Warning) }
+        alert.audioFilePath?.let { path ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Local SOS recording", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .combinedClickable(
+                            onClick = { onPlayRecording(path) },
+                            onLongClick = { onShareRecording(path) }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.GraphicEq, contentDescription = "Play SOS recording")
+                }
+                IconButton(onClick = { onShareRecording(path) }) {
+                    Icon(Icons.Default.Share, contentDescription = "Share SOS recording")
+                }
+            }
+        }
         if (alert.contactStatuses.isNotEmpty()) {
             TextButton(onClick = { contactsExpanded = !contactsExpanded }) {
                 Text(if (contactsExpanded) "Hide contact results" else "Show contact results")

@@ -5,8 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
@@ -15,7 +13,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,8 +21,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.kaval.app.core.components.BottomNavItems
-import com.kaval.app.core.components.KavalBottomNavBar
 import com.kaval.app.core.theme.KavalTheme
 import com.kaval.app.presentation.navigation.KavalRoutes
 import com.kaval.app.presentation.screens.ActivityLogScreen
@@ -55,7 +50,6 @@ fun KavalApp(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val bottomRoutes = BottomNavItems.map { it.route }.toSet()
     var pendingSmsPermissionGranted by remember { mutableStateOf(false) }
     var showSmsExplanation by remember { mutableStateOf(false) }
     var showAudioExplanation by remember { mutableStateOf(false) }
@@ -189,28 +183,17 @@ fun KavalApp(
         }
     }
     KavalTheme(settings = state.appearance) {
-        Scaffold(
-            bottomBar = {
-                if (currentRoute in bottomRoutes) {
-                    KavalBottomNavBar(currentRoute, BottomNavItems) { route ->
-                        navController.navigate(route) {
-                            popUpTo(KavalRoutes.Home)
-                            launchSingleTop = true
-                        }
-                    }
-                }
-            }
-        ) { padding ->
             NavHost(
                 navController = navController,
-                startDestination = KavalRoutes.Home,
-                modifier = Modifier.padding(padding)
+                startDestination = KavalRoutes.Home
             ) {
                 composable(KavalRoutes.Home) {
                     HomeScreen(
                         state = state,
                         onSos = { navController.navigate(KavalRoutes.Countdown) },
                         onSettings = { navController.navigate(KavalRoutes.Settings) },
+                        onProfile = { navController.navigate(KavalRoutes.Profile) },
+                        onHelpline = { navController.navigate(KavalRoutes.Helpline) },
                         onFakeCall = { navController.navigate(KavalRoutes.FakeCall) },
                         onShareLocation = { navController.navigate(KavalRoutes.Map) },
                         onGuardianModeChange = viewModel::setGuardianMode,
@@ -288,7 +271,6 @@ fun KavalApp(
                     )
                 }
             }
-        }
     }
 
     if (showCoarseLocationExplanation) {
