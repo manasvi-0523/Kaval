@@ -10,15 +10,15 @@ import androidx.compose.ui.graphics.Color
 import com.kaval.app.domain.model.AppearanceSettings
 
 object KavalColors {
-    val Background = Color(0xFF0B1220)
-    val Surface = Color(0xFF121C2D)
-    val SurfaceLight = Color(0xFFEAF2FF)
-    val Emergency = Color(0xFFD92D20)
-    val Warning = Color(0xFFF59E0B)
-    val Safe = Color(0xFF12B76A)
-    val Trust = Color(0xFF2E90FA)
-    val Muted = Color(0xFF98A2B3)
-    val Text = Color(0xFFF8FAFC)
+    val Background = Color(0xFF121212)
+    val Surface = Color(0xFF1E1E1E)
+    val SurfaceLight = Color(0xFFF7F8FA)
+    val Emergency = Color(0xFFD32F2F)
+    val Warning = Color(0xFFFF8F00)
+    val Safe = Color(0xFF00897B)
+    val Trust = Color(0xFF1565C0)
+    val Muted = Color(0xFFB0B0B0)
+    val Text = Color(0xFFFFFFFF)
 }
 
 private val DarkScheme = darkColorScheme(
@@ -36,17 +36,17 @@ private val DarkScheme = darkColorScheme(
 )
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFF175CD3),
-    secondary = Color(0xFF087443),
-    tertiary = Color(0xFFB54708),
+    primary = KavalColors.Trust,
+    secondary = KavalColors.Safe,
+    tertiary = KavalColors.Warning,
     error = KavalColors.Emergency,
-    background = Color(0xFFF3F7FA),
-    surface = Color.White,
+    background = Color(0xFFFFFFFF),
+    surface = KavalColors.SurfaceLight,
     onPrimary = Color.White,
     onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF111827),
-    onSurface = Color(0xFF111827)
+    onTertiary = Color(0xFF212121),
+    onBackground = Color(0xFF212121),
+    onSurface = Color(0xFF212121)
 )
 
 private val HighContrastScheme = darkColorScheme(

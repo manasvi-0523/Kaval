@@ -29,8 +29,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -114,6 +116,8 @@ private fun KavalScreen(content: LazyListScope.() -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         content = {
@@ -157,72 +161,29 @@ fun HomeScreen(
             KavalSOSButton(onActivate = onSos)
         }
         item {
-            if (state.journeyActive) {
-                KavalGlassCard {
-                    KavalSectionHeader("Journey active", state.journeyStatus)
-                    Text("Live location shared - ${state.locationState.readinessLabel()}")
-                    Text("Guardian: ${if (state.guardianModeActive) "Watching" else "Not connected"}", color = KavalColors.Muted)
-                    Text("Route: On expected route", color = KavalColors.Muted)
-                    Text("ETA: 18 min", fontWeight = FontWeight.Bold)
-                    KavalSectionHeader("Safety checks")
-                    Text("Done - Guardian notified")
-                    Text("Done - GPS lock ${state.locationState.status.displayLabel()}")
-                    Text("In progress - Route monitoring")
-                    Text("Upcoming - Check-in at destination")
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        KavalPrimaryButton("I've arrived", onReached, Modifier.weight(1f))
-                        KavalSecondaryButton("Need more time", onBoarded, Modifier.weight(1f))
-                    }
-                }
-            } else {
-                KavalGlassCard {
-                    KavalSectionHeader("Start Safe Journey", "Share route, ETA, and check-ins with a guardian.")
-                    KavalPrimaryButton("Start Safe Journey", onStartJourney, Modifier.fillMaxWidth())
-                }
-                KavalGlassCard {
-                    KavalSectionHeader("I feel unsafe", "Cab unsafe, followed, exit excuse, or safety call.")
-                    KavalSecondaryButton("What is happening?", { showUnsafeSheet = true }, Modifier.fillMaxWidth())
-                }
+            KavalGlassCard {
+                KavalSectionHeader("Start Safe Journey", "Share route, ETA, and check-ins with a guardian.")
+                KavalPrimaryButton(
+                    "Start Safe Journey",
+                    {
+                        Toast.makeText(context, "Live guardian tracking must be set up first.", Toast.LENGTH_SHORT).show()
+                    },
+                    Modifier.fillMaxWidth()
+                )
             }
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader("Live Guardian Tracking")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(if (state.guardianModeActive) "On - Updates every 30s" else "Off - Tap to choose who can track you", color = KavalColors.Muted)
-                    }
-                    Switch(state.guardianModeActive, onGuardianModeChange)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Passive Safety Mode", fontWeight = FontWeight.Bold)
-                        Text(if (state.passiveSafetyActive) "Visible monitoring state enabled" else "Manual safety only", color = KavalColors.Muted)
-                    }
-                    Switch(state.passiveSafetyActive, onPassiveSafetyChange)
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickAction("Safety Call", Icons.Default.Call, Modifier.weight(1f), onFakeCall)
-                QuickAction("GPS Status", Icons.Default.LocationOn, Modifier.weight(1f)) {
-                    Toast.makeText(
-                        context,
-                        if (state.locationState.location != null) "Live location is ready" else "Refresh GPS before sharing",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    onShareLocation()
-                }
+                KavalSectionHeader("I feel unsafe", "Cab unsafe, followed, exit excuse, or safety call.")
+                KavalSecondaryButton("What is happening?", { showUnsafeSheet = true }, Modifier.fillMaxWidth())
             }
         }
         item {
             KavalGlassCard {
                 KavalSectionHeader("Status")
-                Text("Guardian tracking: ${if (state.guardianModeActive) "On" else "Off"}")
+                Text("Live Guardian Tracking: Off")
                 Text("Demo mode: ${if (state.demoMode) "On - real SMS blocked" else "Off - real SMS enabled"}")
-                Text("SMS: ${if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) "Ready" else "Permission needed"}")
-                Text("Contacts: ${state.contacts.size}")
+                Text("Location: ${state.locationState.readinessLabel()}")
             }
         }
     }
