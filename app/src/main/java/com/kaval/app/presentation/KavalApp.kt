@@ -5,10 +5,20 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -26,7 +38,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kaval.app.core.components.BottomNavItems
 import com.kaval.app.core.components.KavalBottomNavBar
+import com.kaval.app.core.theme.KavalColors
 import com.kaval.app.core.theme.KavalTheme
+import com.kaval.app.domain.model.LocationPermissionLevel
 import com.kaval.app.presentation.navigation.KavalRoutes
 import com.kaval.app.presentation.screens.ActivityLogScreen
 import com.kaval.app.presentation.screens.AppearanceScreen
@@ -36,6 +50,7 @@ import com.kaval.app.presentation.screens.EmergencyModeScreen
 import com.kaval.app.presentation.screens.FakeCallScreen
 import com.kaval.app.presentation.screens.HomeScreen
 import com.kaval.app.presentation.screens.HelplineScreen
+import com.kaval.app.presentation.screens.JourneyDestinationSearchScreen
 import com.kaval.app.presentation.screens.MapScreen
 import com.kaval.app.presentation.screens.PermissionExplanationContent
 import com.kaval.app.presentation.screens.ProfileScreen
@@ -106,6 +121,14 @@ fun KavalApp(
             }
             else -> viewModel.refreshLocation()
         }
+    }
+
+    fun openJourneySearch() {
+        if (state.locationState.permissionLevel == LocationPermissionLevel.NONE) {
+            beginLocationPermissionFlow()
+            return
+        }
+        navController.navigate(KavalRoutes.JourneySearch)
     }
 
     fun enterEmergencyMode() {
@@ -190,6 +213,15 @@ fun KavalApp(
     }
     KavalTheme(settings = state.appearance) {
         Scaffold(
+            topBar = {
+                if (currentRoute in bottomRoutes) {
+                    KavalMainTopBar(
+                        showMenu = currentRoute == KavalRoutes.Home,
+                        demoMode = state.demoMode,
+                        onMenu = { navController.navigate(KavalRoutes.Settings) }
+                    )
+                }
+            },
             bottomBar = {
                 if (currentRoute in bottomRoutes) {
                     KavalBottomNavBar(currentRoute, BottomNavItems) { route ->
@@ -215,7 +247,7 @@ fun KavalApp(
                         onShareLocation = { navController.navigate(KavalRoutes.Map) },
                         onGuardianModeChange = viewModel::setGuardianMode,
                         onPassiveSafetyChange = viewModel::setPassiveSafety,
-                        onStartJourney = viewModel::startJourney,
+                        onStartJourney = { openJourneySearch() },
                         onBoarded = viewModel::markBoarded,
                         onReached = viewModel::markReached
                     )
@@ -267,6 +299,15 @@ fun KavalApp(
                 }
                 composable(KavalRoutes.Appearance) {
                     AppearanceScreen(settings = state.appearance, onSave = viewModel::saveAppearance, onBack = { navController.popBackStack() })
+                }
+                composable(KavalRoutes.JourneySearch) {
+                    JourneyDestinationSearchScreen(
+                        onBack = { navController.popBackStack() },
+                        onUseCurrentLocation = {
+                            viewModel.refreshLocation()
+                            navController.popBackStack()
+                        }
+                    )
                 }
                 composable(KavalRoutes.FakeCall) { FakeCallScreen(onBack = { navController.popBackStack() }) }
                 composable(KavalRoutes.Countdown) {
@@ -366,4 +407,49 @@ fun KavalApp(
                 }
             )
         }
-    }}
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KavalMainTopBar(
+    showMenu: Boolean,
+    demoMode: Boolean,
+    onMenu: () -> Unit
+) {
+    TopAppBar(
+        navigationIcon = {
+            if (showMenu) {
+                IconButton(onClick = onMenu) {
+                    Icon(Icons.Default.Menu, contentDescription = "Open settings")
+                }
+            }
+        },
+        title = {
+            Row {
+                Icon(
+                    Icons.Default.Security,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(22.dp),
+                    tint = KavalColors.Emergency
+                )
+                Text("Kaval", fontWeight = FontWeight.Bold)
+            }
+        },
+        actions = {
+            if (demoMode) {
+                Text(
+                    "DEMO",
+                    modifier = Modifier.padding(end = 8.dp),
+                    color = KavalColors.Warning,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            IconButton(onClick = {}) {
+                Icon(Icons.Default.Notifications, contentDescription = "Notifications")
+            }
+        }
+    )
+}

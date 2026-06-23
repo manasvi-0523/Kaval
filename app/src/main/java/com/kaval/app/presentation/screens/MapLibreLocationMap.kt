@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -54,6 +57,7 @@ internal fun MapLibreLocationMap(
     val center = location?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(20.5937, 78.9629)
     val recenterRequest = recenterSignal
     val styleUrl = "https://api.maptiler.com/maps/streets-v2/style.json?key=$mapTilerKey"
+    var styleLoaded by remember(mapView) { mutableStateOf(false) }
 
     DisposableEffect(mapView) {
         mapView.onStart()
@@ -71,58 +75,80 @@ internal fun MapLibreLocationMap(
             modifier = Modifier.fillMaxSize(),
             update = { view ->
                 view.getMapAsync { map ->
-                    map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
-                        if (location != null) {
-                            val point = Feature.fromGeometry(Point.fromLngLat(location.longitude, location.latitude))
-                            val source = style.getSourceAs<GeoJsonSource>(USER_SOURCE_ID)
-                            if (source == null) {
-                                style.addSource(GeoJsonSource(USER_SOURCE_ID, point))
-                                style.addLayer(
-                                    CircleLayer(USER_LAYER_ID, USER_SOURCE_ID).withProperties(
-                                        circleRadius(9f),
-                                        circleColor(Color(0xFF1565C0).toArgb()),
-                                        circleStrokeColor(Color.White.toArgb()),
-                                        circleStrokeWidth(3f)
-                                    )
-                                )
-                            } else {
-                                source.setGeoJson(point)
-                            }
-                            location.accuracyMeters?.takeIf { it > 0f }?.let { accuracyMeters ->
-                                val accuracyFeature = Feature.fromGeometry(location.toAccuracyPolygon(accuracyMeters))
-                                val accuracySource = style.getSourceAs<GeoJsonSource>(ACCURACY_SOURCE_ID)
-                                if (accuracySource == null) {
-                                    style.addSource(GeoJsonSource(ACCURACY_SOURCE_ID, accuracyFeature))
-                                    style.addLayerBelow(
-                                        FillLayer(ACCURACY_FILL_LAYER_ID, ACCURACY_SOURCE_ID).withProperties(
-                                            fillColor(Color(0xFF1565C0).toArgb()),
-                                            fillOpacity(0.16f)
-                                        ),
-                                        USER_LAYER_ID
-                                    )
-                                    style.addLayerBelow(
-                                        LineLayer(ACCURACY_STROKE_LAYER_ID, ACCURACY_SOURCE_ID).withProperties(
-                                            lineColor(Color(0xFF1565C0).toArgb()),
-                                            lineWidth(2f)
-                                        ),
-                                        USER_LAYER_ID
-                                    )
-                                } else {
-                                    accuracySource.setGeoJson(accuracyFeature)
-                                }
-                            }
+                    if (!styleLoaded) {
+                        map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
+                            styleLoaded = true
+                            renderLocation(style, location)
+                            recenterMap(map, center, location, recenterRequest)
                         }
-                        map.animateCamera(
-                            CameraUpdateFactory.newCameraPosition(
-                                CameraPosition.Builder().target(center).zoom(if (location == null) 4.0 else 16.0).build()
-                            ),
-                            if (recenterRequest == 0) 700 else 450
-                        )
+                    } else {
+                        map.getStyle { style ->
+                            renderLocation(style, location)
+                            recenterMap(map, center, location, recenterRequest)
+                        }
                     }
                 }
             }
         )
     }
+}
+
+private fun renderLocation(style: Style, location: KavalLocation?) {
+    if (location == null) return
+
+    val point = Feature.fromGeometry(Point.fromLngLat(location.longitude, location.latitude))
+    val source = style.getSourceAs<GeoJsonSource>(USER_SOURCE_ID)
+    if (source == null) {
+        style.addSource(GeoJsonSource(USER_SOURCE_ID, point))
+        style.addLayer(
+            CircleLayer(USER_LAYER_ID, USER_SOURCE_ID).withProperties(
+                circleRadius(9f),
+                circleColor(Color(0xFF1565C0).toArgb()),
+                circleStrokeColor(Color.White.toArgb()),
+                circleStrokeWidth(3f)
+            )
+        )
+    } else {
+        source.setGeoJson(point)
+    }
+
+    location.accuracyMeters?.takeIf { it > 0f }?.let { accuracyMeters ->
+        val accuracyFeature = Feature.fromGeometry(location.toAccuracyPolygon(accuracyMeters))
+        val accuracySource = style.getSourceAs<GeoJsonSource>(ACCURACY_SOURCE_ID)
+        if (accuracySource == null) {
+            style.addSource(GeoJsonSource(ACCURACY_SOURCE_ID, accuracyFeature))
+            style.addLayerBelow(
+                FillLayer(ACCURACY_FILL_LAYER_ID, ACCURACY_SOURCE_ID).withProperties(
+                    fillColor(Color(0xFF1565C0).toArgb()),
+                    fillOpacity(0.16f)
+                ),
+                USER_LAYER_ID
+            )
+            style.addLayerBelow(
+                LineLayer(ACCURACY_STROKE_LAYER_ID, ACCURACY_SOURCE_ID).withProperties(
+                    lineColor(Color(0xFF1565C0).toArgb()),
+                    lineWidth(2f)
+                ),
+                USER_LAYER_ID
+            )
+        } else {
+            accuracySource.setGeoJson(accuracyFeature)
+        }
+    }
+}
+
+private fun recenterMap(
+    map: org.maplibre.android.maps.MapLibreMap,
+    center: LatLng,
+    location: KavalLocation?,
+    recenterRequest: Int
+) {
+    map.animateCamera(
+        CameraUpdateFactory.newCameraPosition(
+            CameraPosition.Builder().target(center).zoom(if (location == null) 4.0 else 16.0).build()
+        ),
+        if (recenterRequest == 0) 700 else 450
+    )
 }
 
 private fun KavalLocation.toAccuracyPolygon(radiusMeters: Float): Polygon {

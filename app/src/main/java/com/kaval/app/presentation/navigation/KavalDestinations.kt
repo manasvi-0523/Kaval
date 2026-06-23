@@ -9,6 +9,7 @@ object KavalRoutes {
     const val Settings = "settings"
     const val Profile = "profile"
     const val Appearance = "appearance"
+    const val JourneySearch = "journey_search"
     const val FakeCall = "fake_call"
     const val Countdown = "countdown"
     const val EmergencyMode = "emergency_mode"

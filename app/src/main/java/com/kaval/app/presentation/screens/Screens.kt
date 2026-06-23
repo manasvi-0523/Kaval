@@ -29,10 +29,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -116,8 +114,6 @@ private fun KavalScreen(content: LazyListScope.() -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
             .padding(horizontal = 18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         content = {
@@ -141,22 +137,7 @@ fun HomeScreen(
     onBoarded: () -> Unit,
     onReached: () -> Unit
 ) {
-    val context = LocalContext.current
-    var showUnsafeSheet by remember { mutableStateOf(false) }
     KavalScreen {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onSettings) {
-                    Icon(Icons.Default.Menu, contentDescription = "Open settings", tint = MaterialTheme.colorScheme.onBackground)
-                }
-                Column {
-                    Text("KAVAL", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
-                    Text("Personal safety companion", color = KavalColors.Muted)
-                }
-                Spacer(Modifier.weight(1f))
-                if (state.demoMode) KavalStatusBadge("DEMO", KavalColors.Trust)
-            }
-        }
         item {
             KavalSOSButton(onActivate = onSos)
         }
@@ -165,17 +146,15 @@ fun HomeScreen(
                 KavalSectionHeader("Start Safe Journey", "Share route, ETA, and check-ins with a guardian.")
                 KavalPrimaryButton(
                     "Start Safe Journey",
-                    {
-                        Toast.makeText(context, "Live guardian tracking must be set up first.", Toast.LENGTH_SHORT).show()
-                    },
+                    onStartJourney,
                     Modifier.fillMaxWidth()
                 )
             }
         }
         item {
-            KavalGlassCard {
-                KavalSectionHeader("I feel unsafe", "Cab unsafe, followed, exit excuse, or safety call.")
-                KavalSecondaryButton("What is happening?", { showUnsafeSheet = true }, Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                QuickAction("Safety Call", Icons.Default.Phone, Modifier.weight(1f), onFakeCall)
+                QuickAction("Share Location", Icons.Default.LocationOn, Modifier.weight(1f), onShareLocation)
             }
         }
         item {
@@ -186,24 +165,6 @@ fun HomeScreen(
                 Text("Location: ${state.locationState.readinessLabel()}")
             }
         }
-    }
-
-    if (showUnsafeSheet) {
-        UnsafeSituationSheet(
-            onDismiss = { showUnsafeSheet = false },
-            onSafetyCall = {
-                showUnsafeSheet = false
-                onFakeCall()
-            },
-            onShareLocation = {
-                showUnsafeSheet = false
-                onShareLocation()
-            },
-            onSos = {
-                showUnsafeSheet = false
-                onSos()
-            }
-        )
     }
 }
 
@@ -451,6 +412,74 @@ private fun formatLocationAge(timestampMillis: Long): String {
         ageSeconds < 60 -> "$ageSeconds seconds ago"
         ageSeconds < 3_600 -> "${ageSeconds / 60} minutes ago"
         else -> "Over an hour ago"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun JourneyDestinationSearchScreen(
+    onBack: () -> Unit,
+    onUseCurrentLocation: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+
+    Scaffold(topBar = { KavalTopBar("Where are you going?", onBack) }) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Search destination") },
+                    placeholder = { Text("DBIT College, Majestic, Koramangala...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    KavalSecondaryButton("Current location", onUseCurrentLocation, Modifier.weight(1f))
+                    KavalSecondaryButton("Share link only", onUseCurrentLocation, Modifier.weight(1f))
+                }
+            }
+            item {
+                KavalGlassCard {
+                    KavalSectionHeader("Recent destinations")
+                    listOf(
+                        "DBIT College, Kumbalagodu",
+                        "Majestic Bus Stand",
+                        "Koramangala, Bengaluru"
+                    ).forEach { destination ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(destination, fontWeight = FontWeight.Bold)
+                                Text("Saved locally when journey history is enabled", color = KavalColors.Muted)
+                            }
+                            TextButton(onClick = onUseCurrentLocation) {
+                                Text("Select")
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                KavalGlassCard {
+                    KavalSectionHeader("Next step")
+                    Text("Route ETA and guardian notification will appear on the confirm screen after destination search is connected.")
+                    Text("Guardian notification is optional. Location permission is the only gate for starting this flow.", color = KavalColors.Muted)
+                }
+            }
+        }
     }
 }
 
