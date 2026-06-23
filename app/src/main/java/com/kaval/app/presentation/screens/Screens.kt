@@ -128,8 +128,6 @@ fun HomeScreen(
     state: KavalUiState,
     onSos: () -> Unit,
     onSettings: () -> Unit,
-    onProfile: () -> Unit,
-    onHelpline: () -> Unit,
     onFakeCall: () -> Unit,
     onShareLocation: () -> Unit,
     onGuardianModeChange: (Boolean) -> Unit,
@@ -141,54 +139,28 @@ fun HomeScreen(
     val context = LocalContext.current
     KavalScreen {
         item {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Default.Menu, contentDescription = "Open settings", tint = MaterialTheme.colorScheme.onBackground)
                 }
-                Column(Modifier.weight(1f)) {
-                    Text("KAVAL", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                Column {
+                    Text("KAVAL", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
                     Text("Personal safety companion", color = KavalColors.Muted)
                 }
-                IconButton(onClick = onHelpline) {
-                    Icon(Icons.Default.Call, contentDescription = "Open helplines", tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = onProfile) {
-                    Icon(Icons.Default.Person, contentDescription = "Open profile", tint = MaterialTheme.colorScheme.primary)
-                }
+                Spacer(Modifier.weight(1f))
                 if (state.demoMode) KavalStatusBadge("DEMO", KavalColors.Trust)
             }
         }
         item {
             KavalGlassCard {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        KavalSectionHeader(
-                            if (state.safetyStatus.locationSharingActive) "Emergency mode active" else "Ready state",
-                            if (state.safetyStatus.locationSharingActive) "SOS is active. Local evidence and contact alerts are being tracked." else "Check GPS, SMS, and contacts before you travel."
-                        )
-                    }
-                    KavalStatusBadge(
-                        text = if (state.safetyStatus.locationSharingActive) "ACTIVE" else "STANDBY",
-                        color = if (state.safetyStatus.locationSharingActive) KavalColors.Emergency else KavalColors.Safe
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    KavalStatusBadge("GPS ${state.locationState.status.displayLabel()}", state.locationState.status.statusColor(), Modifier.weight(1f))
-                    KavalStatusBadge(
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) "SMS Ready" else "SMS Needed",
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) KavalColors.Safe else KavalColors.Warning,
-                        Modifier.weight(1f)
-                    )
-                }
-                Text("Trusted contacts: ${state.contacts.size}", color = KavalColors.Muted)
+                KavalSectionHeader(
+                    if (state.safetyStatus.locationSharingActive) "Emergency mode active" else "Safety tools ready",
+                    if (state.safetyStatus.locationSharingActive) "Kaval is tracking the active SOS state." else "Check readiness before you travel."
+                )
+                KavalStatusBadge(
+                    text = if (state.safetyStatus.locationSharingActive) "Location Sharing ON" else "Location Sharing OFF",
+                    color = if (state.safetyStatus.locationSharingActive) KavalColors.Safe else KavalColors.Muted
+                )
             }
         }
         item {
@@ -278,12 +250,6 @@ fun HomeScreen(
                     ).show()
                     onShareLocation()
                 }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickAction("Helplines", Icons.Default.Phone, Modifier.weight(1f), onHelpline)
-                QuickAction("Profile", Icons.Default.Person, Modifier.weight(1f), onProfile)
             }
         }
         item {
