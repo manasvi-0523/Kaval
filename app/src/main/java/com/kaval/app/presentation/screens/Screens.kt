@@ -17,6 +17,7 @@ import android.os.VibratorManager
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -137,6 +138,7 @@ fun HomeScreen(
     onReached: () -> Unit
 ) {
     val context = LocalContext.current
+    var showUnsafeSheet by remember { mutableStateOf(false) }
     KavalScreen {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -152,40 +154,43 @@ fun HomeScreen(
             }
         }
         item {
-            KavalGlassCard {
-                KavalSectionHeader(
-                    if (state.safetyStatus.locationSharingActive) "Emergency mode active" else "Safety tools ready",
-                    if (state.safetyStatus.locationSharingActive) "Kaval is tracking the active SOS state." else "Check readiness before you travel."
-                )
-                KavalStatusBadge(
-                    text = if (state.safetyStatus.locationSharingActive) "Location Sharing ON" else "Location Sharing OFF",
-                    color = if (state.safetyStatus.locationSharingActive) KavalColors.Safe else KavalColors.Muted
-                )
+            KavalSOSButton(onActivate = onSos)
+        }
+        item {
+            if (state.journeyActive) {
+                KavalGlassCard {
+                    KavalSectionHeader("Journey active", state.journeyStatus)
+                    Text("Live location shared - ${state.locationState.readinessLabel()}")
+                    Text("Guardian: ${if (state.guardianModeActive) "Watching" else "Not connected"}", color = KavalColors.Muted)
+                    Text("Route: On expected route", color = KavalColors.Muted)
+                    Text("ETA: 18 min", fontWeight = FontWeight.Bold)
+                    KavalSectionHeader("Safety checks")
+                    Text("Done - Guardian notified")
+                    Text("Done - GPS lock ${state.locationState.status.displayLabel()}")
+                    Text("In progress - Route monitoring")
+                    Text("Upcoming - Check-in at destination")
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        KavalPrimaryButton("I've arrived", onReached, Modifier.weight(1f))
+                        KavalSecondaryButton("Need more time", onBoarded, Modifier.weight(1f))
+                    }
+                }
+            } else {
+                KavalGlassCard {
+                    KavalSectionHeader("Start Safe Journey", "Share route, ETA, and check-ins with a guardian.")
+                    KavalPrimaryButton("Start Safe Journey", onStartJourney, Modifier.fillMaxWidth())
+                }
+                KavalGlassCard {
+                    KavalSectionHeader("I feel unsafe", "Cab unsafe, followed, exit excuse, or safety call.")
+                    KavalSecondaryButton("What is happening?", { showUnsafeSheet = true }, Modifier.fillMaxWidth())
+                }
             }
         }
         item {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                KavalSOSButton(onActivate = onSos)
-            }
-        }
-        item {
             KavalGlassCard {
-                KavalSectionHeader("Safety readiness")
-                Text("Location: ${state.locationState.readinessLabel()}")
-                Text(
-                    "SMS: ${if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) "Ready" else "Permission needed"}"
-                )
-                Text("Trusted Contacts: ${state.contacts.size}")
-                Text("Mode: ${if (state.demoMode) "Demo" else "Real"}")
-            }
-        }
-        item {
-            KavalGlassCard {
-                KavalSectionHeader("Guardian Mode", state.journeyStatus)
+                KavalSectionHeader("Live Guardian Tracking")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Guardian monitoring", fontWeight = FontWeight.Bold)
-                        Text(if (state.guardianModeActive) "In-app session: ON" else "In-app session: OFF", color = KavalColors.Muted)
+                        Text(if (state.guardianModeActive) "On - Updates every 30s" else "Off - Tap to choose who can track you", color = KavalColors.Muted)
                     }
                     Switch(state.guardianModeActive, onGuardianModeChange)
                 }
@@ -196,52 +201,11 @@ fun HomeScreen(
                     }
                     Switch(state.passiveSafetyActive, onPassiveSafetyChange)
                 }
-                KavalStatusBadge(
-                    text = if (state.passiveSafetyActive) "Passive Safety Active" else "Passive Safety Idle",
-                    color = if (state.passiveSafetyActive) KavalColors.Safe else KavalColors.Muted
-                )
-            }
-        }
-        item {
-            KavalGlassCard {
-                KavalSectionHeader("Journey Timeline", "Before / During / After")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Before", "During", "After").forEach { phase ->
-                        KavalStatusBadge(
-                            text = phase,
-                            color = if (state.journeyPhase == phase) KavalColors.Trust else KavalColors.Muted,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                Text(if (state.journeyActive) "Live ETA: 18 min" else "Start a journey before boarding.")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    KavalPrimaryButton("Start Journey", onStartJourney, Modifier.weight(1f))
-                    KavalSecondaryButton("Arrived Safely", onReached, Modifier.weight(1f))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    KavalSecondaryButton(
-                        "I've boarded",
-                        {
-                            onBoarded()
-                            Toast.makeText(context, "Boarding update queued for guardian", Toast.LENGTH_SHORT).show()
-                        },
-                        Modifier.weight(1f)
-                    )
-                    KavalSecondaryButton(
-                        "I've reached",
-                        {
-                            onReached()
-                            Toast.makeText(context, "Reached safely update queued", Toast.LENGTH_SHORT).show()
-                        },
-                        Modifier.weight(1f)
-                    )
-                }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                QuickAction("Fake Call", Icons.Default.Call, Modifier.weight(1f), onFakeCall)
+                QuickAction("Safety Call", Icons.Default.Call, Modifier.weight(1f), onFakeCall)
                 QuickAction("GPS Status", Icons.Default.LocationOn, Modifier.weight(1f)) {
                     Toast.makeText(
                         context,
@@ -254,50 +218,57 @@ fun HomeScreen(
         }
         item {
             KavalGlassCard {
-                KavalSectionHeader("Practical Escapes")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    KavalSecondaryButton(
-                        "Quick Exit Script",
-                        { Toast.makeText(context, "Excuse message queued for trusted contact", Toast.LENGTH_SHORT).show() },
-                        Modifier.weight(1f)
-                    )
-                    KavalSecondaryButton(
-                        "Google Share",
-                        {
-                            val shareText = """
-                                Kaval safety update:
-                                I am sharing my current safety status.
-
-                                Location:
-                                ${state.locationState.location?.mapsLink ?: "Location unavailable. Please call me if needed."}
-
-                                Sent via Kaval.
-                            """.trimIndent()
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, shareText)
-                            }
-                            context.startActivity(Intent.createChooser(intent, "Share safety update"))
-                            Toast.makeText(context, "Choose Messages, Gmail, or another app", Toast.LENGTH_SHORT).show()
-                        },
-                        Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-        item {
-            KavalGlassCard {
-                KavalSectionHeader("Recent Activity")
-                Text(state.alerts.firstOrNull()?.let { "Last alert: ${it.status}" } ?: "Last alert: None")
-            }
-        }
-        item {
-            KavalGlassCard {
-                KavalSectionHeader("Safety permissions")
-                Text("Location: ${state.locationState.readinessLabel()}")
+                KavalSectionHeader("Status")
+                Text("Guardian tracking: ${if (state.guardianModeActive) "On" else "Off"}")
+                Text("Demo mode: ${if (state.demoMode) "On - real SMS blocked" else "Off - real SMS enabled"}")
                 Text("SMS: ${if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) "Ready" else "Permission needed"}")
-                Text("Kaval does not request contacts or background-location access.")
+                Text("Contacts: ${state.contacts.size}")
             }
+        }
+    }
+
+    if (showUnsafeSheet) {
+        UnsafeSituationSheet(
+            onDismiss = { showUnsafeSheet = false },
+            onSafetyCall = {
+                showUnsafeSheet = false
+                onFakeCall()
+            },
+            onShareLocation = {
+                showUnsafeSheet = false
+                onShareLocation()
+            },
+            onSos = {
+                showUnsafeSheet = false
+                onSos()
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UnsafeSituationSheet(
+    onDismiss: () -> Unit,
+    onSafetyCall: () -> Unit,
+    onShareLocation: () -> Unit,
+    onSos: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            KavalSectionHeader("What is happening?")
+            KavalSecondaryButton("Cab / auto feels unsafe", onSafetyCall, Modifier.fillMaxWidth())
+            KavalSecondaryButton("Someone is following me", onSos, Modifier.fillMaxWidth())
+            KavalSecondaryButton("I need an exit excuse", onSafetyCall, Modifier.fillMaxWidth())
+            KavalSecondaryButton("I want someone to know I'm monitored", onShareLocation, Modifier.fillMaxWidth())
+            KavalSecondaryButton("Share my live location", onShareLocation, Modifier.fillMaxWidth())
+            KavalPrimaryButton("Start safety call", onSafetyCall, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
         }
     }
 }
@@ -852,7 +823,7 @@ fun SettingsScreen(
             KavalGlassCard {
                 SettingRow("Profile", "Emergency notes and medical context", Icons.Default.Person, onProfile)
                 SettingRow("Appearance", "Theme, motion, text size, and live preview", Icons.Default.Palette, onAppearance)
-                SettingRow("Fake Call", "Start an internal fake call simulation", Icons.Default.Phone, onFakeCall)
+                SettingRow("Safety Call Mode", "Choose a real or simulated call path", Icons.Default.Phone, onFakeCall)
             }
         }
         item {
@@ -1086,7 +1057,7 @@ fun FakeCallScreen(onBack: () -> Unit) {
         }
     }
 
-    Scaffold(topBar = { KavalTopBar("Fake Call", onBack) }) { padding ->
+    Scaffold(topBar = { KavalTopBar("Safety Call Mode", onBack) }) { padding ->
         if (incoming) {
             Box(
                 modifier = Modifier
@@ -1120,11 +1091,21 @@ fun FakeCallScreen(onBack: () -> Unit) {
                     .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                item {
+                    KavalGlassCard {
+                        KavalSectionHeader("Why do you need this call?")
+                        Text("Pick the situation first. Kaval will suggest the safest call style.", color = KavalColors.Muted)
+                        KavalSecondaryButton("Awkward social situation", { caller = "Friend"; delayLabel = "Immediate" }, Modifier.fillMaxWidth())
+                        KavalSecondaryButton("Cab / auto ride feels unsafe", { caller = "Emergency Contact"; delayLabel = "Immediate" }, Modifier.fillMaxWidth())
+                        KavalSecondaryButton("I need an exit excuse", { caller = "Brother"; delayLabel = "10 sec" }, Modifier.fillMaxWidth())
+                        KavalSecondaryButton("I just want a simulated call", {}, Modifier.fillMaxWidth())
+                    }
+                }
                 item { ChoiceGroup("Caller Name", callers, caller) { caller = it } }
                 item { ChoiceGroup("Delay", delays, delayLabel) { delayLabel = it } }
                 item {
                     KavalPrimaryButton(
-                        text = if (remainingDelaySeconds > 0) "Fake Call Scheduled" else "Start Fake Call",
+                        text = if (remainingDelaySeconds > 0) "Safety Call Scheduled" else "Start Safety Call",
                         onClick = {
                             remainingDelaySeconds = when (delayLabel) {
                                 "10 sec" -> 10
@@ -1213,49 +1194,81 @@ fun EmergencyCountdownScreen(onCancel: () -> Unit, onTriggered: () -> Unit) {
 
 @Composable
 fun EmergencyModeScreen(state: KavalUiState, onStop: () -> Unit) {
-    var mockCallMessage by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = true) {}
+    val context = LocalContext.current
     val alert = state.alerts.firstOrNull()
+    var responseSeconds by remember(alert?.id) { mutableIntStateOf(15) }
+    var critical by remember(alert?.id) { mutableStateOf(false) }
 
-    KavalScreen {
-        item {
-            KavalGlassCard {
-                KavalStatusBadge(if (alert?.isDemo == true) "Demo Alert" else "Emergency Active", KavalColors.Emergency)
-                Text(alert?.locationLabel ?: "Checking location", fontWeight = FontWeight.Bold)
-                Text("SMS status: ${alert?.smsStatus?.replace('_', ' ') ?: "queued"}")
-                Text("Sent: ${alert?.sentCount ?: 0}/${alert?.contactsAttempted ?: 0}")
-                Text("Delivered: ${alert?.deliveredCount ?: 0}")
-                Text("Failed: ${alert?.failedCount ?: 0}")
-                Text("Emergency ID: ${alert?.id ?: "Pending"}")
+    LaunchedEffect(alert?.id, critical) {
+        if (!critical) {
+            while (responseSeconds > 0) {
+                delay(1_000L)
+                responseSeconds -= 1
             }
+            critical = true
         }
-        item {
-            KavalGlassCard {
-                KavalSectionHeader(if (alert?.isDemo == true) "Simulated alert" else "SOS location")
-                Text(alert?.mapsLink ?: "Location unavailable. Please try calling immediately.")
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                KavalPrimaryButton("Stop Emergency Mode", onStop, Modifier.weight(1f), emergency = true)
-                KavalSecondaryButton(
-                    "Call Trusted Contact",
-                    {
-                        mockCallMessage = state.contacts.firstOrNull()
-                            ?.let { "Mock call ready for ${it.name}. No real call was placed." }
-                            ?: "No trusted contact is available for a mock call."
-                    },
-                    Modifier.weight(1f)
-                )
-            }
-        }
-        mockCallMessage?.let { message ->
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .padding(18.dp)
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             item {
-                KavalGlassCard {
-                    KavalSectionHeader("Mock call action")
-                    Text(message)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        if (critical) "CRITICAL - UNABLE TO RESPOND" else "EMERGENCY ACTIVE",
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text("Emergency ID: ${alert?.id ?: "Pending"}", color = Color.White.copy(alpha = 0.72f))
+                }
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("SMS: ${alert?.smsStatus?.replace('_', ' ') ?: "queued"}", color = Color.White)
+                    Text("Sent: ${alert?.sentCount ?: 0}/${alert?.contactsAttempted ?: 0}  Delivered: ${alert?.deliveredCount ?: 0}  Failed: ${alert?.failedCount ?: 0}", color = Color.White.copy(alpha = 0.78f))
+                    Text("Location: ${alert?.locationLabel ?: "Checking location"}", color = Color.White)
+                    Text("Audio: ${if (alert?.audioFilePath != null) "Recording locally" else "Not recording"}", color = Color.White)
+                }
+            }
+            item {
+                if (!critical) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Are you able to respond?", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        KavalPrimaryButton("YES, I'M HERE", { critical = false }, Modifier.fillMaxWidth())
+                        KavalSecondaryButton("NO / CAN'T RESPOND", { critical = true }, Modifier.fillMaxWidth())
+                        Text("Auto-classifying in: ${responseSeconds.coerceAtLeast(0)}s", color = Color.White.copy(alpha = 0.78f))
+                    }
+                }
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    KavalPrimaryButton("I AM SAFE", onStop, Modifier.fillMaxWidth(), emergency = false)
+                    KavalPrimaryButton("STILL IN DANGER", { critical = true }, Modifier.fillMaxWidth(), emergency = false)
+                    KavalPrimaryButton(
+                        "CALL 112",
+                        { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112"))) },
+                        Modifier.fillMaxWidth(),
+                        emergency = true
+                    )
+                    KavalSecondaryButton("Recording audio - Stop", { AudioRecordingStopper.stop(context) }, Modifier.fillMaxWidth())
                 }
             }
         }
+    }
+}
+
+private object AudioRecordingStopper {
+    fun stop(context: Context) {
+        com.kaval.app.service.AudioRecordingService.stop(context)
     }
 }
 

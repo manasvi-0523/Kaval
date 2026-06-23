@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.ContactPhone
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
@@ -145,7 +146,7 @@ fun KavalSOSButton(onActivate: () -> Unit, modifier: Modifier = Modifier) {
 
     LaunchedEffect(isPressed.value) {
         if (isPressed.value) {
-            delay(2_000)
+            delay(1_500)
             if (isPressed.value && !hasActivated.value) {
                 hasActivated.value = true
                 isPressed.value = false
@@ -156,19 +157,26 @@ fun KavalSOSButton(onActivate: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
-    Box(modifier = modifier.size(224.dp), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(112.dp),
+        contentAlignment = Alignment.Center
+    ) {
         Box(
             Modifier
-                .size(196.dp)
+                .fillMaxWidth()
+                .height(104.dp)
                 .scale(pulse)
-                .background(KavalColors.Emergency.copy(alpha = 0.14f), CircleShape)
+                .background(KavalColors.Emergency.copy(alpha = 0.14f), RoundedCornerShape(22.dp))
         )
         Box(
             Modifier
-                .size(176.dp)
+                .fillMaxWidth()
+                .height(96.dp)
                 .scale(if (isPressed.value) 0.96f else 1f)
-                .background(KavalColors.Emergency, CircleShape)
-                .border(8.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+                .background(KavalColors.Emergency, RoundedCornerShape(20.dp))
+                .border(2.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(20.dp))
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
@@ -180,8 +188,8 @@ fun KavalSOSButton(onActivate: () -> Unit, modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("SOS", color = Color.White, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Black)
-                Text("Hold for emergency", color = Color.White.copy(alpha = 0.86f), style = MaterialTheme.typography.labelMedium)
+                Text("HOLD FOR SOS", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                Text("1.5s hold - 3s cancel - sends SMS + location", color = Color.White.copy(alpha = 0.86f), style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -320,7 +328,8 @@ fun KavalRiskCard(title: String, description: String, color: Color, icon: ImageV
 
 val BottomNavItems = listOf(
     KavalNavItem("home", "Home", Icons.Default.Home),
-    KavalNavItem("helpline", "Helpline", Icons.Default.Call),
+    KavalNavItem("map", "Map", Icons.Default.Map),
+    KavalNavItem("helpline", "Helplines", Icons.Default.LocalHospital),
     KavalNavItem("profile", "Profile", Icons.Default.Person)
 )
 

@@ -34,7 +34,7 @@ class AudioRecordingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (recordingStarted) return START_NOT_STICKY
+        if (recordingStarted) return START_STICKY
 
         incidentId = intent?.getLongExtra(EXTRA_INCIDENT_ID, -1L) ?: -1L
         if (incidentId < 0L) {
@@ -43,7 +43,7 @@ class AudioRecordingService : Service() {
         }
 
         startForeground(NOTIFICATION_ID, buildNotification())
-        return if (startRecording()) START_NOT_STICKY else {
+        return if (startRecording()) START_STICKY else {
             stopSelf()
             START_NOT_STICKY
         }

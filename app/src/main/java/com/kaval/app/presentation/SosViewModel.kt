@@ -3,8 +3,8 @@ package com.kaval.app.presentation
 import android.app.Application
 import android.app.PendingIntent
 import android.content.Intent
-import android.os.Build
 import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kaval.app.KavalApplication
@@ -34,17 +34,18 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
 
         val latestLocationState = locationTracker.state.value
         val location = latestLocationState.location
-        val contacts = state.contacts.filter { it.phoneNumber.any(Char::isDigit) }
+        val contacts = state.contacts
+            .mapNotNull { contact -> normalizePhoneNumber(contact.phoneNumber)?.let { contact to it } }
         val permissionStatus = if (state.demoMode) "not_required" else if (smsPermissionGranted) "granted" else "denied"
         val initialSmsStatus = when {
             state.demoMode -> "demo_blocked"
             !smsPermissionGranted -> "permission_denied"
-            contacts.isEmpty() -> "no_trusted_contacts"
+            contacts.isEmpty() -> "no_valid_sms_contacts"
             else -> "queued"
         }
         val errorReason = when {
             !state.demoMode && !smsPermissionGranted -> "SMS permission denied"
-            !state.demoMode && contacts.isEmpty() -> "No valid trusted contacts"
+            !state.demoMode && contacts.isEmpty() -> "No valid SMS-ready trusted contacts"
             else -> null
         }
         val locationAttached = location != null && latestLocationState.status != LocationStatus.PERMISSION_NEEDED
@@ -73,7 +74,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (!state.demoMode && smsPermissionGranted && contacts.isNotEmpty()) {
-            repository.initializeSmsDeliveries(incidentId, contacts, MESSAGE_TYPE)
+            repository.initializeSmsDeliveries(incidentId, contacts.map { it.first }, MESSAGE_TYPE)
             sendMultipartSms(incidentId, contacts, message)
         }
         onEmergencyReady()
@@ -81,17 +82,18 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun sendMultipartSms(
         incidentId: Long,
-        contacts: List<TrustedContact>,
+        contacts: List<Pair<TrustedContact, String>>,
         message: String
     ) {
-        val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            app.getSystemService(SmsManager::class.java)
+        val subscriptionId = SubscriptionManager.getDefaultSmsSubscriptionId()
+        @Suppress("DEPRECATION")
+        val smsManager = if (subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
         } else {
-            @Suppress("DEPRECATION")
             SmsManager.getDefault()
         }
 
-        contacts.forEach { contact ->
+        contacts.forEach { (contact, normalizedPhone) ->
             try {
                 val parts = smsManager.divideMessage(message)
                 val sentIntents = ArrayList<PendingIntent>(parts.size)
@@ -113,7 +115,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 smsManager.sendMultipartTextMessage(
-                    contact.phoneNumber,
+                    normalizedPhone,
                     null,
                     parts,
                     sentIntents,
@@ -122,12 +124,12 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             } catch (error: SecurityException) {
                 repository.updateSmsSent(
                     incidentId, contact.id, MESSAGE_TYPE, "FAILED",
-                    error.message ?: "SMS permission denied", SmsManager.RESULT_ERROR_GENERIC_FAILURE
+                    error.message ?: "SMS permission denied for subscription $subscriptionId", SmsManager.RESULT_ERROR_GENERIC_FAILURE
                 )
             } catch (error: RuntimeException) {
                 repository.updateSmsSent(
                     incidentId, contact.id, MESSAGE_TYPE, "FAILED",
-                    error.message ?: "SMS send failed", SmsManager.RESULT_ERROR_GENERIC_FAILURE
+                    error.message ?: "SMS send failed for subscription $subscriptionId", SmsManager.RESULT_ERROR_GENERIC_FAILURE
                 )
             }
         }
@@ -168,12 +170,10 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         val time = SimpleDateFormat("HH:mm dd/MM/yyyy", Locale.getDefault()).format(Date())
 
         return buildList {
-            add("SOS ALERT")
+            add("SOS: $profileName needs help.")
             add(customMessage)
-            add("Name: $profileName")
             if (location != null) {
                 add("Location: ${location.mapsLink}")
-                add("Coordinates: ${String.format(Locale.US, "%.6f,%.6f", location.latitude, location.longitude)}")
             } else {
                 add("Location unavailable - GPS off or no signal")
             }
@@ -182,8 +182,21 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         }.joinToString("\n")
     }
 
+    private fun normalizePhoneNumber(raw: String): String? {
+        val trimmed = raw.trim()
+        val digits = trimmed.filter(Char::isDigit)
+        return when {
+            trimmed.startsWith("+") && digits.length in 8..15 -> "+$digits"
+            digits.length == 10 -> "+91$digits"
+            digits.length == 11 && digits.startsWith("0") -> "+91${digits.drop(1)}"
+            digits.length == 12 && digits.startsWith("91") -> "+$digits"
+            digits.length in 8..15 -> "+$digits"
+            else -> null
+        }
+    }
+
     companion object {
         private const val MESSAGE_TYPE = "SOS"
-        private const val MAX_CUSTOM_MESSAGE_LENGTH = 240
+        private const val MAX_CUSTOM_MESSAGE_LENGTH = 120
     }
 }
