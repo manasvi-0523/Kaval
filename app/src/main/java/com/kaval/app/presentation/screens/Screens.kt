@@ -244,6 +244,7 @@ fun MapScreen(
 ) {
     val context = LocalContext.current
     val locationState = state.locationState
+    var recenterSignal by remember { mutableIntStateOf(0) }
     KavalScreen {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -272,11 +273,12 @@ fun MapScreen(
                     MapLibreLocationMap(
                         location = locationState.location,
                         mapTilerKey = BuildConfig.MAPTILER_KEY,
+                        recenterSignal = recenterSignal,
                         modifier = Modifier.fillMaxSize()
                     )
                     if (locationState.location == null) {
                         KavalStatusBadge(
-                            "Showing Bengaluru demo location",
+                            "No live GPS fix yet",
                             KavalColors.Warning,
                             Modifier.align(Alignment.TopCenter).padding(12.dp)
                         )
@@ -291,20 +293,21 @@ fun MapScreen(
                     locationState.status.statusColor()
                 )
                 Text(locationState.message, color = KavalColors.Muted)
+                Text("Permission state: ${locationState.permissionLevel.displayLabel()}", color = KavalColors.Muted)
                 locationState.location?.let { location ->
                     location.accuracyMeters?.let { accuracy ->
-                        Text("Accuracy", color = KavalColors.Muted)
-                        Text("Approximately ${accuracy.toInt()} metres", fontWeight = FontWeight.Bold)
-                    }
-                    Text("Last updated", color = KavalColors.Muted)
-                    Text(formatLocationAge(location.timestampMillis), fontWeight = FontWeight.Bold)
-                    Text(
-                        if (locationState.permissionLevel == LocationPermissionLevel.PRECISE) {
-                            "Precise location permission active"
+                        if (accuracy > 50f) {
+                            Text("Location accuracy is weak", fontWeight = FontWeight.Bold, color = KavalColors.Warning)
+                            Text("Current accuracy: ±${accuracy.toInt()}m", fontWeight = FontWeight.Bold)
+                            Text("Move near a window or open area for better tracking.", color = KavalColors.Muted)
                         } else {
-                            "Approximate location permission active"
+                            Text("Location accuracy: ${location.accuracyLabel()} ±${accuracy.toInt()}m", fontWeight = FontWeight.Bold)
                         }
-                    )
+                    }
+                    if (locationState.status == LocationStatus.STALE && (location.accuracyMeters ?: Float.MAX_VALUE) <= 50f) {
+                        Text("Using last known GPS fix. Tap Refresh Location for a live update.", color = KavalColors.Warning)
+                    }
+                    Text("Updated ${formatLocationAge(location.timestampMillis)}", fontWeight = FontWeight.Bold)
                 }
                 if (locationAccessDenied && locationState.permissionLevel == LocationPermissionLevel.NONE) {
                     Text("Location access denied", fontWeight = FontWeight.Bold)
@@ -332,17 +335,23 @@ fun MapScreen(
                         Modifier.fillMaxWidth()
                     )
                 } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        KavalSecondaryButton("Refresh", onRefreshLocation, Modifier.weight(1f))
-                        if (locationState.location != null) {
+                    KavalSecondaryButton("Refresh Location", onRefreshLocation, Modifier.fillMaxWidth())
+                    if (locationState.location != null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            KavalSecondaryButton(
+                                "Recenter",
+                                { recenterSignal += 1 },
+                                Modifier.weight(1f)
+                            )
                             KavalPrimaryButton(
-                                "Open in Maps",
+                                "Open in Google Maps",
                                 { openInGoogleMaps(context, locationState.location.mapsLink) },
                                 Modifier.weight(1f)
                             )
                         }
                     }
                     if (locationState.status == LocationStatus.UNAVAILABLE) {
+                        Text("Enable location permission and device GPS to continue.", color = KavalColors.Muted)
                         KavalSecondaryButton(
                             "Open Location Settings",
                             { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
@@ -389,6 +398,23 @@ private fun LocationStatus.statusColor(): Color {
         LocationStatus.APPROXIMATE, LocationStatus.STALE -> KavalColors.Warning
         LocationStatus.PERMISSION_NEEDED, LocationStatus.UNAVAILABLE -> KavalColors.Emergency
         LocationStatus.WAITING_FOR_GPS -> KavalColors.Trust
+    }
+}
+
+private fun LocationPermissionLevel.displayLabel(): String {
+    return when (this) {
+        LocationPermissionLevel.NONE -> "Not granted"
+        LocationPermissionLevel.APPROXIMATE -> "Approximate granted"
+        LocationPermissionLevel.PRECISE -> "Precise granted"
+    }
+}
+
+private fun com.kaval.app.domain.model.KavalLocation.accuracyLabel(): String {
+    val accuracy = accuracyMeters ?: return "Unknown"
+    return when {
+        accuracy <= 25f -> "Good"
+        accuracy <= 50f -> "Moderate"
+        else -> "Weak"
     }
 }
 

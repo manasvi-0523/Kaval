@@ -18,26 +18,41 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.PropertyFactory.fillColor
+import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
+import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 private const val USER_SOURCE_ID = "kaval-user-location-source"
 private const val USER_LAYER_ID = "kaval-user-location-layer"
+private const val ACCURACY_SOURCE_ID = "kaval-accuracy-source"
+private const val ACCURACY_FILL_LAYER_ID = "kaval-accuracy-fill-layer"
+private const val ACCURACY_STROKE_LAYER_ID = "kaval-accuracy-stroke-layer"
 
 @Composable
 internal fun MapLibreLocationMap(
     location: KavalLocation?,
     mapTilerKey: String,
+    recenterSignal: Int,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val mapView = remember(context) { MapView(context).apply { onCreate(Bundle()) } }
-    val center = location?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(12.9716, 77.5946)
+    val center = location?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(20.5937, 78.9629)
+    val recenterRequest = recenterSignal
     val styleUrl = "https://api.maptiler.com/maps/streets-v2/style.json?key=$mapTilerKey"
 
     DisposableEffect(mapView) {
@@ -73,12 +88,35 @@ internal fun MapLibreLocationMap(
                             } else {
                                 source.setGeoJson(point)
                             }
+                            location.accuracyMeters?.takeIf { it > 0f }?.let { accuracyMeters ->
+                                val accuracyFeature = Feature.fromGeometry(location.toAccuracyPolygon(accuracyMeters))
+                                val accuracySource = style.getSourceAs<GeoJsonSource>(ACCURACY_SOURCE_ID)
+                                if (accuracySource == null) {
+                                    style.addSource(GeoJsonSource(ACCURACY_SOURCE_ID, accuracyFeature))
+                                    style.addLayerBelow(
+                                        FillLayer(ACCURACY_FILL_LAYER_ID, ACCURACY_SOURCE_ID).withProperties(
+                                            fillColor(Color(0xFF1565C0).toArgb()),
+                                            fillOpacity(0.16f)
+                                        ),
+                                        USER_LAYER_ID
+                                    )
+                                    style.addLayerBelow(
+                                        LineLayer(ACCURACY_STROKE_LAYER_ID, ACCURACY_SOURCE_ID).withProperties(
+                                            lineColor(Color(0xFF1565C0).toArgb()),
+                                            lineWidth(2f)
+                                        ),
+                                        USER_LAYER_ID
+                                    )
+                                } else {
+                                    accuracySource.setGeoJson(accuracyFeature)
+                                }
+                            }
                         }
                         map.animateCamera(
                             CameraUpdateFactory.newCameraPosition(
-                                CameraPosition.Builder().target(center).zoom(if (location == null) 11.0 else 15.5).build()
+                                CameraPosition.Builder().target(center).zoom(if (location == null) 4.0 else 16.0).build()
                             ),
-                            700
+                            if (recenterRequest == 0) 700 else 450
                         )
                     }
                 }
@@ -86,3 +124,27 @@ internal fun MapLibreLocationMap(
         )
     }
 }
+
+private fun KavalLocation.toAccuracyPolygon(radiusMeters: Float): Polygon {
+    val earthRadiusMeters = 6_371_000.0
+    val latitudeRadians = latitude.toRadians()
+    val longitudeRadians = longitude.toRadians()
+    val angularDistance = radiusMeters / earthRadiusMeters
+    val ring = (0..64).map { step ->
+        val bearing = 2.0 * PI * step / 64.0
+        val pointLatitude = kotlin.math.asin(
+            sin(latitudeRadians) * cos(angularDistance) +
+                cos(latitudeRadians) * sin(angularDistance) * cos(bearing)
+        )
+        val pointLongitude = longitudeRadians + kotlin.math.atan2(
+            sin(bearing) * sin(angularDistance) * cos(latitudeRadians),
+            cos(angularDistance) - sin(latitudeRadians) * sin(pointLatitude)
+        )
+        Point.fromLngLat(pointLongitude.toDegrees(), pointLatitude.toDegrees())
+    }
+    return Polygon.fromLngLats(listOf(ring))
+}
+
+private fun Double.toRadians(): Double = this * PI / 180.0
+
+private fun Double.toDegrees(): Double = this * 180.0 / PI

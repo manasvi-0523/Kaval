@@ -31,12 +31,35 @@ Notes:
 
 ## Phase 1 - Accurate Live Location Core
 
-Status: Not started under this phase-gated run
+Status: In progress
 
 Gate:
 - Real GPS works on physical phone
 - Accuracy and last updated time visible
 - Location unavailable state honest
+
+Implementation status:
+- `FusedLocationProviderClient` is in use through `LocationTracker`.
+- Coarse location explanation appears before the coarse system permission request.
+- Fine location explanation appears only after coarse permission is granted.
+- Map screen shows permission state, accuracy, last-updated time, refresh, recenter, and Google Maps link controls when a location is available.
+- MapLibre location layer now renders a blue user dot and an accuracy radius from the real `Location.accuracy`.
+- No fake Bengaluru/demo point is shown as the user's location.
+- SOS message generation uses the transient latest Maps link when location is available.
+
+Verification:
+- Build pass 1: Passed (`.\gradlew.bat assembleDebug --no-daemon`)
+- Build pass 2: Passed (`.\gradlew.bat assembleDebug --no-daemon`)
+- Physical phone install: Passed on `CPH2613`
+- Final Map screen phone check: Pending because the phone locked during verification
+- MapLibre tile check: Pending because `MAPTILER_KEY` is not present in `local.properties`
+
+Manual gate still pending:
+- Unlock phone and open Map.
+- Confirm current location appears.
+- Confirm accuracy radius appears when MapTiler key is configured.
+- Move slightly and confirm update.
+- Turn device location off and confirm unavailable state.
 
 ## Phase 2 - Guardian Contacts and Live Sharing Session
 
