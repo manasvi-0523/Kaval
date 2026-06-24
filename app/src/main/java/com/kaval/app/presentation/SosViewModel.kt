@@ -74,7 +74,6 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (!state.demoMode && smsPermissionGranted && contacts.isNotEmpty()) {
-            repository.initializeSmsDeliveries(incidentId, contacts.map { it.first }, MESSAGE_TYPE)
             sendMultipartSms(incidentId, contacts, message)
         }
         onEmergencyReady()
@@ -92,10 +91,17 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             SmsManager.getDefault()
         }
+        val parts = smsManager.divideMessage(message)
+        repository.initializeSmsDeliveries(
+            incidentId = incidentId,
+            contacts = contacts,
+            messageType = MESSAGE_TYPE,
+            subscriptionId = subscriptionId,
+            partCount = parts.size
+        )
 
         contacts.forEach { (contact, normalizedPhone) ->
             try {
-                val parts = smsManager.divideMessage(message)
                 val sentIntents = ArrayList<PendingIntent>(parts.size)
                 val deliveredIntents = ArrayList<PendingIntent>(parts.size)
                 parts.indices.forEach { partIndex ->

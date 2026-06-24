@@ -307,6 +307,12 @@ fun KavalActivityCard(
                     contact.failureReason?.let { reason ->
                         Text(reason, color = KavalColors.Warning)
                     }
+                    contact.diagnosticText?.let { diagnostic ->
+                        Text(diagnostic, color = KavalColors.Muted)
+                    }
+                    contact.resultCode?.let { code ->
+                        Text("Android resultCode: $code", color = KavalColors.Muted)
+                    }
                 }
             }
         }

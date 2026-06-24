@@ -80,7 +80,8 @@ data class SmsContactStatus(
     val sentAtEpochMillis: Long?,
     val deliveredAtEpochMillis: Long?,
     val failureReason: String?,
-    val resultCode: Int?
+    val resultCode: Int?,
+    val diagnosticText: String? = null
 ) {
     val displayStatus: String
         get() = when {

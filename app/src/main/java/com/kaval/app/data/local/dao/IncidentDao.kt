@@ -24,9 +24,16 @@ interface IncidentDao {
 
     @Query("""
         UPDATE sms_deliveries SET
-            sentStatus = CASE WHEN sentStatus = 'FAILED' THEN sentStatus ELSE :status END,
+            sentStatus = CASE
+                WHEN :status = 'SENT' THEN 'SENT'
+                WHEN sentStatus = 'SENT' THEN sentStatus
+                ELSE :status
+            END,
             sentAtEpochMillis = :timestamp,
-            failureReason = :failureReason,
+            failureReason = CASE
+                WHEN :status = 'SENT' THEN NULL
+                ELSE :failureReason
+            END,
             resultCode = :resultCode
         WHERE incidentId = :incidentId AND contactId = :contactId AND messageType = :messageType
     """)
@@ -44,7 +51,11 @@ interface IncidentDao {
         UPDATE sms_deliveries SET
             deliveryStatus = CASE WHEN deliveryStatus = 'DELIVERY_UNKNOWN' THEN deliveryStatus ELSE :status END,
             deliveredAtEpochMillis = :timestamp,
-            failureReason = COALESCE(:failureReason, failureReason),
+            failureReason = CASE
+                WHEN :status = 'DELIVERED' THEN NULL
+                WHEN :failureReason IS NOT NULL THEN :failureReason
+                ELSE failureReason
+            END,
             resultCode = :resultCode
         WHERE incidentId = :incidentId AND contactId = :contactId AND messageType = :messageType AND sentStatus != 'FAILED'
     """)

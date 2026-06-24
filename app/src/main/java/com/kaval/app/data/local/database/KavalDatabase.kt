@@ -14,7 +14,7 @@ import com.kaval.app.data.local.entities.TrustedContactEntity
 
 @Database(
     entities = [TrustedContactEntity::class, IncidentEntity::class, SmsDeliveryEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class KavalDatabase : RoomDatabase() {
@@ -26,7 +26,7 @@ abstract class KavalDatabase : RoomDatabase() {
             context.applicationContext,
             KavalDatabase::class.java,
             "kaval.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -132,6 +132,12 @@ abstract class KavalDatabase : RoomDatabase() {
                 """.trimIndent())
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sms_deliveries_incidentId_contactId_messageType ON sms_deliveries (incidentId, contactId, messageType)")
                 db.execSQL("DROP TABLE incident_contact_status")
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sms_deliveries ADD COLUMN diagnosticText TEXT")
             }
         }
     }

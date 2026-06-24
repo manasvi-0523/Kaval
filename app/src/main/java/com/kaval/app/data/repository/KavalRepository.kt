@@ -40,17 +40,20 @@ class KavalRepository(
 
     suspend fun initializeSmsDeliveries(
         incidentId: Long,
-        contacts: List<TrustedContact>,
-        messageType: String
+        contacts: List<Pair<TrustedContact, String>>,
+        messageType: String,
+        subscriptionId: Int,
+        partCount: Int
     ) {
         incidentDao.insertSmsDeliveries(
-            contacts.map { contact ->
+            contacts.map { (contact, normalizedPhone) ->
                 SmsDeliveryEntity(
                     incidentId = incidentId,
                     contactId = contact.id,
                     contactName = contact.name,
-                    phoneNumber = contact.phoneNumber,
-                    messageType = messageType
+                    phoneNumber = normalizedPhone,
+                    messageType = messageType,
+                    diagnosticText = "Attempting SMS via subscriptionId=$subscriptionId; parts=$partCount; entered=${contact.phoneNumber}"
                 )
             }
         )

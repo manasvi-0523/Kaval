@@ -59,7 +59,8 @@ data class SmsDeliveryEntity(
     val sentAtEpochMillis: Long? = null,
     val deliveredAtEpochMillis: Long? = null,
     val failureReason: String? = null,
-    val resultCode: Int? = null
+    val resultCode: Int? = null,
+    val diagnosticText: String? = null
 )
 
 data class IncidentWithContacts(
@@ -102,7 +103,8 @@ fun IncidentWithContacts.toDomain() = EmergencyAlert(
             sentAtEpochMillis = contact.sentAtEpochMillis,
             deliveredAtEpochMillis = contact.deliveredAtEpochMillis,
             failureReason = contact.failureReason,
-            resultCode = contact.resultCode
+            resultCode = contact.resultCode,
+            diagnosticText = contact.diagnosticText
         )
     }
 )

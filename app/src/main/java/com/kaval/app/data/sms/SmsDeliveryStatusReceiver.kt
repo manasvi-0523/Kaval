@@ -17,28 +17,34 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
         val contactId = intent.getLongExtra(EXTRA_CONTACT_ID, -1L)
         val messageType = intent.getStringExtra(EXTRA_MESSAGE_TYPE) ?: return
         val isFinalPart = intent.getBooleanExtra(EXTRA_FINAL_PART, false)
+        val carrierErrorCode = intent.getIntExtra("errorCode", Int.MIN_VALUE)
         if (incidentId < 0 || contactId < 0) return
-        if (!isFinalPart && resultCode == Activity.RESULT_OK) return
+        if (!isFinalPart) return
 
         val pendingResult = goAsync()
         val repository = (context.applicationContext as KavalApplication).repository
         receiverScope.launch {
             try {
                 when (intent.action) {
-                    ACTION_SMS_SENT -> repository.updateSmsSent(
-                        incidentId = incidentId,
-                        contactId = contactId,
-                        messageType = messageType,
-                        status = if (resultCode == Activity.RESULT_OK) "SENT" else "FAILED",
-                        failureReason = if (resultCode == Activity.RESULT_OK) null else sentFailureReason(resultCode),
-                        resultCode = resultCode
-                    )
+                    ACTION_SMS_SENT -> {
+                        val isConfirmedOrDeviceAccepted =
+                            resultCode == Activity.RESULT_OK ||
+                                (resultCode == Activity.RESULT_CANCELED && carrierErrorCode == Int.MIN_VALUE)
+                        repository.updateSmsSent(
+                            incidentId = incidentId,
+                            contactId = contactId,
+                            messageType = messageType,
+                            status = if (isConfirmedOrDeviceAccepted) "SENT" else "FAILED",
+                            failureReason = if (isConfirmedOrDeviceAccepted) null else sentFailureReason(resultCode, carrierErrorCode),
+                            resultCode = resultCode
+                        )
+                    }
                     ACTION_SMS_DELIVERED -> repository.updateSmsDelivery(
                         incidentId = incidentId,
                         contactId = contactId,
                         messageType = messageType,
                         status = if (resultCode == Activity.RESULT_OK) "DELIVERED" else "DELIVERY_UNKNOWN",
-                        failureReason = if (resultCode == Activity.RESULT_OK) null else "Carrier delivery receipt unavailable",
+                        failureReason = null,
                         resultCode = resultCode
                     )
                 }
@@ -48,7 +54,8 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun sentFailureReason(code: Int): String = when (code) {
+    private fun sentFailureReason(code: Int, carrierErrorCode: Int): String {
+        val baseReason = when (code) {
         SmsManager.RESULT_ERROR_GENERIC_FAILURE -> "Generic SMS failure"
         SmsManager.RESULT_ERROR_NO_SERVICE -> "No cellular service"
         SmsManager.RESULT_ERROR_NULL_PDU -> "Invalid SMS payload"
@@ -57,6 +64,12 @@ class SmsDeliveryStatusReceiver : BroadcastReceiver() {
         SmsManager.RESULT_ERROR_SHORT_CODE_NOT_ALLOWED -> "Short-code sending not allowed"
         SmsManager.RESULT_ERROR_SHORT_CODE_NEVER_ALLOWED -> "Short-code sending blocked"
         else -> "SMS failed with result code $code"
+        }
+        return if (carrierErrorCode != Int.MIN_VALUE) {
+            "$baseReason; carrier errorCode=$carrierErrorCode"
+        } else {
+            baseReason
+        }
     }
 
     companion object {
