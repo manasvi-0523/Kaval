@@ -12,9 +12,11 @@ import com.kaval.app.data.sms.SmsDeliveryStatusReceiver
 import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.KavalLocation
 import com.kaval.app.domain.model.LocationStatus
+import com.kaval.app.domain.model.LocationPermissionLevel
 import com.kaval.app.domain.model.TrustedContact
-import com.kaval.app.service.AudioRecordingService
+import com.kaval.app.service.KavalForegroundService
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -23,6 +25,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as KavalApplication
     private val repository = app.repository
     private val locationTracker = app.locationTracker
+    private val trackingClient = app.trackingClient
 
     fun trigger(
         state: KavalUiState,
@@ -30,8 +33,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         audioPermissionGranted: Boolean,
         onEmergencyReady: () -> Unit
     ) = viewModelScope.launch {
-        if (!state.demoMode) locationTracker.refreshLocation()
-
+        onEmergencyReady()
         val latestLocationState = locationTracker.state.value
         val location = latestLocationState.location
         val contacts = state.contacts
@@ -49,7 +51,18 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             else -> null
         }
         val locationAttached = location != null && latestLocationState.status != LocationStatus.PERMISSION_NEEDED
-        val message = buildSosMessage(state, location)
+        val trackingToken = if (
+            !state.demoMode &&
+            trackingClient.isBackendConfigured &&
+            trackingClient.isGuardianWebConfigured &&
+            state.locationState.permissionLevel != LocationPermissionLevel.NONE
+        ) {
+            trackingClient.newTrackingToken()
+        } else {
+            null
+        }
+        val trackingUrl = trackingToken?.let(trackingClient::trackingUrl)
+        val message = buildSosMessage(state, location, trackingUrl)
         val incidentId = repository.saveAlert(
             EmergencyAlert(
                 type = MESSAGE_TYPE,
@@ -69,20 +82,89 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             )
         )
 
-        if (!state.demoMode && audioPermissionGranted) {
-            runCatching { AudioRecordingService.start(app, incidentId) }
+        coroutineScope {
+            launch {
+                if (!state.demoMode && (audioPermissionGranted || trackingToken != null)) {
+                    runCatching {
+                        KavalForegroundService.start(
+                            context = app,
+                            incidentId = incidentId,
+                            trackingToken = trackingToken,
+                            displayName = state.profile.name,
+                            recordAudio = audioPermissionGranted
+                        )
+                    }
+                }
+            }
+            launch {
+                if (!state.demoMode && smsPermissionGranted && contacts.isNotEmpty()) {
+                    sendMultipartSms(incidentId, contacts, message, MESSAGE_TYPE)
+                }
+            }
+            launch {
+                if (!state.demoMode) {
+                    locationTracker.refreshLocation()
+                    val resolved = locationTracker.state.value.location
+                    if (location == null && resolved != null && smsPermissionGranted && contacts.isNotEmpty()) {
+                        sendGuardianUpdate(
+                            state,
+                            "LOCATION_UPDATE",
+                            "Updated emergency location is now available."
+                        )
+                    }
+                }
+            }
         }
+    }
 
-        if (!state.demoMode && smsPermissionGranted && contacts.isNotEmpty()) {
-            sendMultipartSms(incidentId, contacts, message)
-        }
-        onEmergencyReady()
+    fun sendGuardianUpdate(
+        state: KavalUiState,
+        messageType: String,
+        update: String
+    ) = viewModelScope.launch {
+        val contacts = state.contacts
+            .mapNotNull { contact -> normalizePhoneNumber(contact.phoneNumber)?.let { contact to it } }
+        if (state.demoMode || contacts.isEmpty()) return@launch
+
+        locationTracker.refreshLocation()
+        val location = locationTracker.state.value.location
+        val message = buildList {
+            add("Kaval emergency update: $update")
+            add("User: ${state.profile.name.ifBlank { "Kaval User" }}")
+            add("Location: ${location?.mapsLink ?: "unavailable"}")
+            trackingClient.activeTrackingToken()
+                ?.let(trackingClient::trackingUrl)
+                ?.let { add("Live: $it") }
+        }.joinToString("\n")
+        val incidentId = repository.saveAlert(
+            EmergencyAlert(
+                type = messageType,
+                title = messageType.replace('_', ' '),
+                message = message,
+                timestamp = System.currentTimeMillis(),
+                status = "Active",
+                locationLabel = if (location != null) "Location attached" else "Location unavailable",
+                contactsNotified = 0,
+                isDemo = false,
+                locationStatus = if (location != null) "attached" else "unavailable",
+                mapsLink = location?.mapsLink,
+                smsStatus = "queued",
+                contactsAttempted = contacts.size,
+                permissionStatus = "granted"
+            )
+        )
+        sendMultipartSms(incidentId, contacts, message, messageType)
+    }
+
+    fun completeTrackingSession() = viewModelScope.launch {
+        trackingClient.completeActiveSession()
     }
 
     private suspend fun sendMultipartSms(
         incidentId: Long,
         contacts: List<Pair<TrustedContact, String>>,
-        message: String
+        message: String,
+        messageType: String
     ) {
         val subscriptionId = SubscriptionManager.getDefaultSmsSubscriptionId()
         @Suppress("DEPRECATION")
@@ -95,7 +177,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         repository.initializeSmsDeliveries(
             incidentId = incidentId,
             contacts = contacts,
-            messageType = MESSAGE_TYPE,
+            messageType = messageType,
             subscriptionId = subscriptionId,
             partCount = parts.size
         )
@@ -109,6 +191,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
                         action = SmsDeliveryStatusReceiver.ACTION_SMS_SENT,
                         incidentId = incidentId,
                         contactId = contact.id,
+                        messageType = messageType,
                         partIndex = partIndex,
                         partCount = parts.size
                     )
@@ -116,6 +199,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
                         action = SmsDeliveryStatusReceiver.ACTION_SMS_DELIVERED,
                         incidentId = incidentId,
                         contactId = contact.id,
+                        messageType = messageType,
                         partIndex = partIndex,
                         partCount = parts.size
                     )
@@ -129,12 +213,12 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } catch (error: SecurityException) {
                 repository.updateSmsSent(
-                    incidentId, contact.id, MESSAGE_TYPE, "FAILED",
+                    incidentId, contact.id, messageType, "FAILED",
                     error.message ?: "SMS permission denied for subscription $subscriptionId", SmsManager.RESULT_ERROR_GENERIC_FAILURE
                 )
             } catch (error: RuntimeException) {
                 repository.updateSmsSent(
-                    incidentId, contact.id, MESSAGE_TYPE, "FAILED",
+                    incidentId, contact.id, messageType, "FAILED",
                     error.message ?: "SMS send failed for subscription $subscriptionId", SmsManager.RESULT_ERROR_GENERIC_FAILURE
                 )
             }
@@ -145,6 +229,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         action: String,
         incidentId: Long,
         contactId: Long,
+        messageType: String,
         partIndex: Int,
         partCount: Int
     ): PendingIntent {
@@ -152,7 +237,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             this.action = action
             putExtra(SmsDeliveryStatusReceiver.EXTRA_INCIDENT_ID, incidentId)
             putExtra(SmsDeliveryStatusReceiver.EXTRA_CONTACT_ID, contactId)
-            putExtra(SmsDeliveryStatusReceiver.EXTRA_MESSAGE_TYPE, MESSAGE_TYPE)
+            putExtra(SmsDeliveryStatusReceiver.EXTRA_MESSAGE_TYPE, messageType)
             putExtra(SmsDeliveryStatusReceiver.EXTRA_FINAL_PART, partIndex == partCount - 1)
         }
         val requestCode = listOf(action, incidentId, contactId, partIndex).hashCode()
@@ -164,7 +249,11 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    private fun buildSosMessage(state: KavalUiState, location: KavalLocation?): String {
+    private fun buildSosMessage(
+        state: KavalUiState,
+        location: KavalLocation?,
+        trackingUrl: String?
+    ): String {
         val profileName = state.profile.name.trim().ifBlank { "Kaval User" }
         val customMessage = state.profile.emergencyNote
             .lines()
@@ -183,6 +272,7 @@ class SosViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 add("Location unavailable - GPS off or no signal")
             }
+            trackingUrl?.let { add("Live tracking: $it") }
             add("Time: $time")
             add("Sent via Kaval")
         }.joinToString("\n")

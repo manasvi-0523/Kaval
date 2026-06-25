@@ -22,6 +22,7 @@ data class KavalUiState(
     val contacts: List<TrustedContact> = emptyList(),
     val alerts: List<EmergencyAlert> = emptyList(),
     val demoMode: Boolean = true,
+    val audioEvidenceEnabled: Boolean = true,
     val profile: UserProfile = UserProfile(),
     val appearance: AppearanceSettings = AppearanceSettings(),
     val safetyStatus: SafetyStatus = SafetyStatus(),
@@ -49,24 +50,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val locationTracker = kavalApplication.locationTracker
     private val safetyModes = MutableStateFlow(SafetyModes())
 
-    private val appearanceAndRetention = combine(
+    private val appearanceRetentionAndAudio = combine(
         repository.appearance,
-        repository.logRetentionDays
-    ) { appearance, retentionDays -> appearance to retentionDays }
+        repository.logRetentionDays,
+        repository.audioEvidenceEnabled
+    ) { appearance, retentionDays, audioEvidenceEnabled ->
+        Triple(appearance, retentionDays, audioEvidenceEnabled)
+    }
 
     private val persistedState = combine(
         repository.contacts,
         repository.alerts,
         repository.demoMode,
         repository.profile,
-        appearanceAndRetention
+        appearanceRetentionAndAudio
     ) { contacts, alerts, demoMode, profile, settings ->
-        val (appearance, retentionDays) = settings
+        val (appearance, retentionDays, audioEvidenceEnabled) = settings
         val locationSharing = alerts.firstOrNull()?.status == "Active"
         KavalUiState(
             contacts = contacts,
             alerts = alerts,
             demoMode = demoMode,
+            audioEvidenceEnabled = audioEvidenceEnabled,
             profile = profile,
             appearance = appearance,
             logRetentionDays = retentionDays,
@@ -133,6 +138,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDemoMode(enabled: Boolean) = viewModelScope.launch {
         repository.setDemoMode(enabled)
+    }
+
+    fun setAudioEvidenceEnabled(enabled: Boolean) = viewModelScope.launch {
+        repository.setAudioEvidenceEnabled(enabled)
     }
 
     fun setLogRetentionDays(days: Int) = viewModelScope.launch {

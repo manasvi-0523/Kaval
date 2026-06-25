@@ -829,6 +829,7 @@ fun HelplineScreen(contacts: List<TrustedContact>) {
 fun SettingsScreen(
     state: KavalUiState,
     onDemoModeChange: (Boolean) -> Unit,
+    onAudioEvidenceChange: (Boolean) -> Unit,
     onProfile: () -> Unit,
     onAppearance: () -> Unit,
     onFakeCall: () -> Unit
@@ -857,6 +858,23 @@ fun SettingsScreen(
                         )
                     }
                     Switch(checked = state.demoMode, onCheckedChange = onDemoModeChange)
+                }
+            }
+        }
+        item {
+            KavalGlassCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Local SOS audio", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Record visible, local-only evidence after SOS. Files are never uploaded automatically.",
+                            color = KavalColors.Muted
+                        )
+                    }
+                    Switch(
+                        checked = state.audioEvidenceEnabled,
+                        onCheckedChange = onAudioEvidenceChange
+                    )
                 }
             }
         }
@@ -1284,7 +1302,7 @@ fun EmergencyModeScreen(state: KavalUiState, onStop: () -> Unit) {
 
 private object AudioRecordingStopper {
     fun stop(context: Context) {
-        com.kaval.app.service.AudioRecordingService.stop(context)
+        com.kaval.app.service.KavalForegroundService.stopRecording(context)
     }
 }
 

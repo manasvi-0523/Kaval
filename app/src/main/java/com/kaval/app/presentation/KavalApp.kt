@@ -46,7 +46,7 @@ import com.kaval.app.presentation.screens.ActivityLogScreen
 import com.kaval.app.presentation.screens.AppearanceScreen
 import com.kaval.app.presentation.screens.ContactsScreen
 import com.kaval.app.presentation.screens.EmergencyCountdownScreen
-import com.kaval.app.presentation.screens.EmergencyModeScreen
+import com.kaval.app.presentation.screens.EmergencyFlowScreen
 import com.kaval.app.presentation.screens.FakeCallScreen
 import com.kaval.app.presentation.screens.HomeScreen
 import com.kaval.app.presentation.screens.HelplineScreen
@@ -55,7 +55,7 @@ import com.kaval.app.presentation.screens.MapScreen
 import com.kaval.app.presentation.screens.PermissionExplanationContent
 import com.kaval.app.presentation.screens.ProfileScreen
 import com.kaval.app.presentation.screens.SettingsScreen
-import com.kaval.app.service.AudioRecordingService
+import com.kaval.app.service.KavalForegroundService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -165,7 +165,9 @@ fun KavalApp(
 
     fun continueAfterSmsDecision(smsPermissionGranted: Boolean) {
         pendingSmsPermissionGranted = smsPermissionGranted
-        if (hasRecordingPermissions()) {
+        if (!state.audioEvidenceEnabled) {
+            triggerSos(smsPermissionGranted, audioPermissionGranted = false)
+        } else if (hasRecordingPermissions()) {
             triggerSos(smsPermissionGranted, audioPermissionGranted = true)
         } else {
             showAudioExplanation = true
@@ -282,6 +284,7 @@ fun KavalApp(
                     SettingsScreen(
                         state = state,
                         onDemoModeChange = viewModel::setDemoMode,
+                        onAudioEvidenceChange = viewModel::setAudioEvidenceEnabled,
                         onProfile = { navController.navigate(KavalRoutes.Profile) },
                         onAppearance = { navController.navigate(KavalRoutes.Appearance) },
                         onFakeCall = { navController.navigate(KavalRoutes.FakeCall) }
@@ -317,15 +320,25 @@ fun KavalApp(
                     )
                 }
                 composable(KavalRoutes.EmergencyMode) {
-                    EmergencyModeScreen(
+                    EmergencyFlowScreen(
                         state = state,
-                        onStop = {
-                            AudioRecordingService.stop(context)
+                        onGuardianUpdate = { type, message ->
+                            sosViewModel.sendGuardianUpdate(state, type, message)
+                        },
+                        onSafe = {
+                            sosViewModel.sendGuardianUpdate(
+                                state,
+                                "I_AM_SAFE",
+                                "${state.profile.name.ifBlank { "Kaval user" }} confirmed they are safe. Emergency monitoring can stop."
+                            )
+                            sosViewModel.completeTrackingSession()
+                            KavalForegroundService.stop(context)
                             viewModel.stopEmergency()
                             navController.navigate(KavalRoutes.Home) {
                                 popUpTo(KavalRoutes.Home) { inclusive = true }
                             }
                         },
+                        onStopRecording = { KavalForegroundService.stopRecording(context) }
                     )
                 }
             }

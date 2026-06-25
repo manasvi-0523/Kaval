@@ -39,9 +39,9 @@
                 android:resource="@xml/file_paths" />
         </provider>
         <service
-            android:name=".service.AudioRecordingService"
+            android:name=".service.KavalForegroundService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="location|microphone" />
         <receiver
             android:name=".data.sms.SmsDeliveryStatusReceiver"
             android:exported="false" />

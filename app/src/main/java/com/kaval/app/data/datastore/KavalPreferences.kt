@@ -15,6 +15,9 @@ private val Context.kavalDataStore by preferencesDataStore("kaval_preferences")
 
 class KavalPreferences(private val context: Context) {
     val demoMode: Flow<Boolean> = context.kavalDataStore.data.map { it[Keys.demoMode] ?: true }
+    val audioEvidenceEnabled: Flow<Boolean> = context.kavalDataStore.data.map {
+        it[Keys.audioEvidenceEnabled] ?: true
+    }
     val logRetentionDays: Flow<Int> = context.kavalDataStore.data.map { it[Keys.logRetentionDays] ?: 28 }
 
     val profile: Flow<UserProfile> = context.kavalDataStore.data.map {
@@ -41,6 +44,10 @@ class KavalPreferences(private val context: Context) {
 
     suspend fun setDemoMode(enabled: Boolean) {
         context.kavalDataStore.edit { it[Keys.demoMode] = enabled }
+    }
+
+    suspend fun setAudioEvidenceEnabled(enabled: Boolean) {
+        context.kavalDataStore.edit { it[Keys.audioEvidenceEnabled] = enabled }
     }
 
     suspend fun setLogRetentionDays(days: Int) {
@@ -70,6 +77,7 @@ class KavalPreferences(private val context: Context) {
 
     private object Keys {
         val demoMode = booleanPreferencesKey("demo_mode")
+        val audioEvidenceEnabled = booleanPreferencesKey("audio_evidence_enabled")
         val logRetentionDays = intPreferencesKey("log_retention_days")
         val name = stringPreferencesKey("profile_name")
         val phone = stringPreferencesKey("profile_phone")

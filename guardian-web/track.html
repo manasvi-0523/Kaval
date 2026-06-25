@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="referrer" content="no-referrer">
+    <title>Live safety session | Kaval</title>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js" defer></script>
+    <script src="/track.js" defer></script>
+  </head>
+  <body>
+    <main class="tracking-shell">
+      <header class="session-header">
+        <div>
+          <p class="eyebrow">Kaval live safety session</p>
+          <h1 id="person-name">Connecting securely</h1>
+        </div>
+        <span id="live-state" class="state state-waiting">Waiting</span>
+      </header>
+
+      <section class="map-region" aria-label="Live location map">
+        <div id="map"></div>
+        <div id="map-message" class="map-message">Waiting for the first location update</div>
+      </section>
+
+      <section class="session-details">
+        <div class="metric">
+          <span>Last update</span>
+          <strong id="updated-age">Not available</strong>
+        </div>
+        <div class="metric">
+          <span>Accuracy</span>
+          <strong id="accuracy">Not available</strong>
+        </div>
+        <div class="metric">
+          <span>Session</span>
+          <strong id="session-status">Checking</strong>
+        </div>
+      </section>
+
+      <p id="stale-warning" class="warning" hidden></p>
+      <p id="fatal-message" class="fatal" hidden></p>
+
+      <section class="actions" aria-label="Emergency actions">
+        <a class="action action-primary" href="tel:112">Call 112</a>
+        <button id="refresh-button" class="action action-secondary" type="button">
+          Refresh location
+        </button>
+      </section>
+
+      <p class="privacy-note">
+        This page shows an expiring safety session. Do not forward this link.
+      </p>
+    </main>
+  </body>
+</html>

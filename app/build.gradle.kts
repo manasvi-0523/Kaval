@@ -14,6 +14,9 @@ val localProperties = Properties().apply {
     }
 }
 val mapTilerKey = localProperties.getProperty("MAPTILER_KEY", "")
+val supabaseUrl = localProperties.getProperty("SUPABASE_URL", "")
+val supabaseAnonKey = localProperties.getProperty("SUPABASE_ANON_KEY", "")
+val guardianWebBaseUrl = localProperties.getProperty("GUARDIAN_WEB_BASE_URL", "")
 
 android {
     namespace = "com.kaval.app"
@@ -26,6 +29,9 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "MAPTILER_KEY", "\"$mapTilerKey\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "GUARDIAN_WEB_BASE_URL", "\"$guardianWebBaseUrl\"")
     }
 
     buildTypes {
@@ -75,5 +81,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     ksp("androidx.room:room-compiler:2.6.1")
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

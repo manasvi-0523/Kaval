@@ -7,6 +7,7 @@ import com.kaval.app.data.local.database.KavalDatabase
 import com.kaval.app.data.location.LocationTracker
 import com.kaval.app.data.maintenance.LogCleanupScheduler
 import com.kaval.app.data.repository.KavalRepository
+import com.kaval.app.data.remote.SupabaseTrackingClient
 import org.maplibre.android.MapLibre
 import org.maplibre.android.WellKnownTileServer
 
@@ -14,6 +15,7 @@ class KavalApplication : Application() {
     val database by lazy { KavalDatabase.create(this) }
     val preferences by lazy { KavalPreferences(this) }
     val locationTracker by lazy { LocationTracker(this) }
+    val trackingClient by lazy { SupabaseTrackingClient(this) }
     val repository by lazy {
         KavalRepository(
             contactDao = database.trustedContactDao(),
