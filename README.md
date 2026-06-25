@@ -32,7 +32,7 @@ Build status: `./gradlew assembleDebug` has been verified locally.
 
 ## MVP Scope
 
-This version uses simulated emergency alerts and demo location data. Real SMS alerts, real-time tracking, backend services, and AI risk prediction are future enhancements.
+This version uses simulated emergency alerts and demo location data. Real SMS alerts, real-time tracking, backend services,with unerstanding the user's situation providing the guidance on how to deal with the situation and AI risk prediction are future enhancements.
 
 ## Screens
 
