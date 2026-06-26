@@ -80,7 +80,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 If Java is not available on `PATH`, install JDK 17 or use Android Studio's bundled JDK.
 
-## Mocked In MVP
+## Mocked In MVP 
 
 - Emergency alert sending
 - Contact notification
