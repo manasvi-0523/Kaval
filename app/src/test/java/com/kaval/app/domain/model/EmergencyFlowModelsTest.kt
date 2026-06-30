@@ -82,8 +82,45 @@ class EmergencyFlowModelsTest {
 
         answers.map(::analyzeSituation).forEach { analysis ->
             assert(analysis.userAdvice.size >= 3)
+            assert(analysis.avoidAdvice.size >= 2)
+            assert(analysis.calmPrompt.isNotBlank())
+            assert(analysis.primaryAction.isNotBlank())
             assert(analysis.guardianInstruction.isNotBlank())
+            assert(analysis.guardianBrief.isNotBlank())
             assert(analysis.answerSummary.isNotBlank())
         }
+    }
+
+    @Test
+    fun classDGuidanceIsSilentAndGuardianBriefDoesNotRequireRepeatedCalls() {
+        val analysis = analyzeSituation(
+            SosAnswers(
+                location = SituationLocation.WITH_UNSAFE_PERSON,
+                situation = SituationType.THREAT_VIOLENCE,
+                canSpeak = SpeakingAbility.CAN_ONLY_TAP,
+                canEscape = EscapeAbility.TRAPPED
+            )
+        )
+
+        assertEquals(SituationClass.D, analysis.situationClass)
+        assert(analysis.calmPrompt.contains("tap controls", ignoreCase = true))
+        assert(analysis.primaryAction.contains("silent", ignoreCase = true))
+        assert(analysis.guardianBrief.contains("Avoid repeated calls", ignoreCase = true))
+    }
+
+    @Test
+    fun cabRiskGuidancePrioritizesPublicStop() {
+        val analysis = analyzeSituation(
+            SosAnswers(
+                location = SituationLocation.IN_VEHICLE,
+                situation = SituationType.WRONG_ROUTE,
+                canSpeak = SpeakingAbility.PRETEND_NORMAL,
+                canEscape = EscapeAbility.NEED_HELP
+            )
+        )
+
+        assertEquals(SituationClass.A, analysis.situationClass)
+        assert(analysis.primaryAction.contains("busy", ignoreCase = true))
+        assert(analysis.avoidAdvice.any { it.contains("vehicle is moving", ignoreCase = true) })
     }
 }

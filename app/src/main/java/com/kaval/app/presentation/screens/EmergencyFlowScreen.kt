@@ -111,7 +111,7 @@ fun EmergencyFlowScreen(
         ) {
             onGuardianUpdate(
                 "SITUATION_CLASS_${analysis.situationClass.name}",
-                "Kaval analysis: ${analysis.title}. ${analysis.guardianInstruction} " +
+                "Kaval analysis: ${analysis.title}. ${analysis.guardianBrief} " +
                     "User responses: ${analysis.answerSummary}."
             )
             flowViewModel.markGuardianAnalysisShared(flow.guardianAnalysisRevision)
@@ -452,12 +452,41 @@ private fun SuggestionScreen(
         item {
             Surface(color = EmergencySurface, shape = RoundedCornerShape(6.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Keep calm", color = EmergencyMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        analysis?.calmPrompt ?: "Breathe slowly. Keep location sharing active.",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Surface(color = Color(0xFF242424), shape = RoundedCornerShape(6.dp)) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("First priority", color = EmergencyRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                analysis?.primaryAction ?: "Move toward a safer public place.",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                lineHeight = 21.sp
+                            )
+                        }
+                    }
                     Text("Do this now", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     analysis?.userAdvice.orEmpty().forEachIndexed { index, advice ->
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("${index + 1}", color = EmergencyRed, fontWeight = FontWeight.Bold)
                             Text(advice, color = Color.White, modifier = Modifier.weight(1f), lineHeight = 20.sp)
                         }
+                    }
+                }
+            }
+        }
+        item {
+            Surface(color = Color(0xFF211817), shape = RoundedCornerShape(6.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Avoid", color = Color(0xFFFFA28D), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    analysis?.avoidAdvice.orEmpty().forEach { warning ->
+                        Text("- $warning", color = Color.White, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                 }
             }
@@ -472,7 +501,7 @@ private fun SuggestionScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        analysis?.guardianInstruction ?: "Guardian was told to call and monitor your location.",
+                        analysis?.guardianBrief ?: "Guardian was told to call and monitor your location.",
                         color = Color.White,
                         fontSize = 13.sp,
                         lineHeight = 19.sp
@@ -560,13 +589,21 @@ private fun ClassDActions(
             }
         }
         Surface(color = Color(0xFF10231F), shape = RoundedCornerShape(6.dp)) {
-            Text(
-                "$guardianStatus. Avoid repeated calls; monitor location and consider police.",
-                color = Color.White,
-                modifier = Modifier.padding(14.dp),
-                fontSize = 13.sp,
-                lineHeight = 19.sp
-            )
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    analysis?.calmPrompt ?: "Stay quiet. Use only tap controls.",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 20.sp
+                )
+                Text(
+                    "$guardianStatus. ${analysis?.guardianBrief ?: "Avoid repeated calls; monitor location and consider police."}",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+            }
         }
         Spacer(Modifier.weight(1f))
         EmergencyButton("SEND POLICE HELP REQUEST", Color(0xFFB71C1C), {
