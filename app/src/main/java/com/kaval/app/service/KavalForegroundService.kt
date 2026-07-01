@@ -25,6 +25,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.kaval.app.KavalApplication
 import com.kaval.app.MainActivity
+import com.kaval.app.data.remote.TrackingUploadStatus
 import com.kaval.app.domain.model.KavalLocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -101,14 +102,22 @@ class KavalForegroundService : Service() {
     @SuppressLint("MissingPermission")
     private fun startTracking() {
         val token = trackingToken ?: return
-        if (!hasLocationPermission() || !trackingClient.isBackendConfigured) return
+        if (!hasLocationPermission()) {
+            TrackingUploadStatus.markFailure(IllegalStateException("Location permission unavailable"))
+            return
+        }
+        if (!trackingClient.isBackendConfigured) {
+            TrackingUploadStatus.markFailure(IllegalStateException("Tracking backend unavailable"))
+            return
+        }
+        TrackingUploadStatus.markStarting()
 
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
                 val kavalLocation = location.toKavalLocation()
                 ioScope.launch {
-                    trackingClient.updateLocation(token, kavalLocation)
+                    uploadLocationWithRetry(token, kavalLocation)
                 }
             }
         }
@@ -122,7 +131,11 @@ class KavalForegroundService : Service() {
                 token = token,
                 displayName = displayName,
                 location = initialLocation
-            ).isSuccess
+            ).onSuccess {
+                TrackingUploadStatus.markSuccess()
+            }.onFailure {
+                TrackingUploadStatus.markFailure(it)
+            }.isSuccess
             if (sessionStarted) {
                 fusedClient.requestLocationUpdates(
                     LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, LOCATION_INTERVAL_MS)
@@ -134,6 +147,18 @@ class KavalForegroundService : Service() {
                 )
             }
         }
+    }
+
+    private suspend fun uploadLocationWithRetry(token: String, location: KavalLocation) {
+        trackingClient.updateLocation(token, location)
+            .onSuccess { TrackingUploadStatus.markSuccess(location.timestampMillis) }
+            .onFailure { firstError ->
+                TrackingUploadStatus.markFailure(firstError)
+                delay(2_000L)
+                trackingClient.updateLocation(token, location)
+                    .onSuccess { TrackingUploadStatus.markSuccess(location.timestampMillis) }
+                    .onFailure { TrackingUploadStatus.markFailure(it) }
+            }
     }
 
     private fun hasLocationPermission(): Boolean {
@@ -252,6 +277,7 @@ class KavalForegroundService : Service() {
         mainHandler.removeCallbacksAndMessages(null)
         locationCallback?.let { fusedClient.removeLocationUpdates(it) }
         locationCallback = null
+        TrackingUploadStatus.markStopped()
         releaseRecorder(deleteInvalidFile)
         recordingStarted = false
         wakeLock?.let { lock -> if (lock.isHeld) lock.release() }

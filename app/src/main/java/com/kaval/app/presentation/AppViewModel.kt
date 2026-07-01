@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kaval.app.KavalApplication
+import com.kaval.app.data.remote.TrackingUploadState
+import com.kaval.app.data.remote.TrackingUploadStatus
 import com.kaval.app.domain.model.AppearanceSettings
 import com.kaval.app.domain.model.EmergencyAlert
 import com.kaval.app.domain.model.KavalLocationState
@@ -28,6 +30,7 @@ data class KavalUiState(
     val safetyStatus: SafetyStatus = SafetyStatus(),
     val emergencyMessage: String = "",
     val locationState: KavalLocationState = KavalLocationState(),
+    val trackingUploadState: TrackingUploadState = TrackingUploadState(),
     val logRetentionDays: Int = 28,
     val guardianModeActive: Boolean = false,
     val passiveSafetyActive: Boolean = false,
@@ -87,10 +90,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<KavalUiState> = combine(
         persistedState,
         safetyModes,
-        locationTracker.state
-    ) { state, modes, locationState ->
+        locationTracker.state,
+        TrackingUploadStatus.state
+    ) { state, modes, locationState, trackingUploadState ->
         state.copy(
             locationState = locationState,
+            trackingUploadState = trackingUploadState,
             guardianModeActive = modes.guardianModeActive,
             passiveSafetyActive = modes.passiveSafetyActive,
             journeyActive = modes.journeyActive,

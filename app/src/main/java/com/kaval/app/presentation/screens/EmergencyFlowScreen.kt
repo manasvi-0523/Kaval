@@ -1,6 +1,9 @@
 package com.kaval.app.presentation.screens
 
+import android.app.Activity
 import android.content.Intent
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -68,13 +71,27 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val EmergencyRed = Color(0xFFEF5350)
-private val EmergencyGreen = Color(0xFF167C66)
-private val EmergencyAmber = Color(0xFFE66A20)
-private val EmergencySurface = Color(0xFF151515)
-private val EmergencyMuted = Color(0xFF9B9B9B)
+private val EmergencyBackground = Color(0xFF0B0F0E)
+private val EmergencyRed = Color(0xFFD95D5D)
+private val EmergencyGreen = Color(0xFF1D7A66)
+private val EmergencyAmber = Color(0xFFD9823B)
+private val EmergencySurface = Color(0xFF151A18)
+private val EmergencySurfaceRaised = Color(0xFF202622)
+private val EmergencyMuted = Color(0xFFA8B0AA)
 
 private data class QuestionOption<T>(val label: String, val value: T)
+
+@Composable
+private fun EmergencyOrientationLock() {
+    val activity = LocalContext.current.findActivity() ?: return
+    DisposableEffect(activity) {
+        val previousOrientation = activity.requestedOrientation
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        onDispose {
+            activity.requestedOrientation = previousOrientation
+        }
+    }
+}
 
 @Composable
 fun EmergencyFlowScreen(
@@ -89,6 +106,7 @@ fun EmergencyFlowScreen(
     val alert = state.alerts.firstOrNull()
     val flow by flowViewModel.state.collectAsStateWithLifecycle()
     var alarm by remember { mutableStateOf<Ringtone?>(null) }
+    EmergencyOrientationLock()
 
     DisposableEffect(Unit) {
         onDispose { alarm?.stop() }
@@ -129,7 +147,7 @@ fun EmergencyFlowScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(EmergencyBackground)
             .padding(horizontal = 18.dp, vertical = 16.dp)
     ) {
         when (flow.stage) {
@@ -225,6 +243,12 @@ fun EmergencyFlowScreen(
     }
 }
 
+private tailrec fun android.content.Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 private fun ResponseCheck(
     state: KavalUiState,
@@ -283,19 +307,43 @@ private fun ResponseCheck(
 private fun StatusPanel(state: KavalUiState) {
     val alert = state.alerts.firstOrNull()
     Surface(color = EmergencySurface, shape = RoundedCornerShape(6.dp)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text(
-                "SMS  ${alert?.sentCount ?: 0} sent / ${alert?.failedCount ?: 0} failed",
-                color = Color.White,
-                fontSize = 12.sp
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Emergency systems", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            EmergencyStatusRow(
+                label = "SMS",
+                value = "${alert?.sentCount ?: 0} sent / ${alert?.failedCount ?: 0} failed"
             )
-            Text("Location  ${alert?.locationLabel ?: "Checking"}", color = Color.White, fontSize = 12.sp)
-            Text(
-                "Audio  ${if (alert?.audioFilePath != null) "Recording locally" else "Skipped or starting"}",
-                color = Color.White,
-                fontSize = 12.sp
+            EmergencyStatusRow(
+                label = "Live tracking",
+                value = trackingUploadLabel(state)
+            )
+            EmergencyStatusRow(
+                label = "Location",
+                value = alert?.locationLabel ?: "Checking GPS"
+            )
+            EmergencyStatusRow(
+                label = "Audio",
+                value = if (alert?.audioFilePath != null) "Recording locally" else "Skipped or starting"
             )
         }
+    }
+}
+
+@Composable
+private fun EmergencyStatusRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = EmergencyMuted, fontSize = 12.sp, modifier = Modifier.weight(0.42f))
+        Text(
+            value,
+            color = Color.White,
+            fontSize = 12.sp,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(0.58f)
+        )
     }
 }
 
@@ -627,6 +675,21 @@ private fun guardianAnalysisStatus(state: KavalUiState): String = when {
     state.demoMode -> "Guardian update blocked by Demo Mode"
     state.contacts.isEmpty() -> "Guardian update not sent: no trusted contact"
     else -> "Guardian analysis queued; check Incident Log for delivery"
+}
+
+private fun trackingUploadLabel(state: KavalUiState): String {
+    val tracking = state.trackingUploadState
+    if (!tracking.active) return "Starting or unavailable"
+    if (tracking.hasRecentFailure) {
+        return "Retrying upload (${tracking.failureCount})"
+    }
+    val lastSuccess = tracking.lastSuccessAtMillis ?: return "Starting upload"
+    val secondsAgo = ((System.currentTimeMillis() - lastSuccess) / 1_000L).coerceAtLeast(0L)
+    return if (secondsAgo < 5) {
+        "Active just now"
+    } else {
+        "Active ${secondsAgo}s ago"
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
